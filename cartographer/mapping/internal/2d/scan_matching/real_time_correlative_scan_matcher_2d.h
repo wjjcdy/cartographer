@@ -81,6 +81,7 @@ class RealTimeCorrelativeScanMatcher2D {
   std::vector<Candidate2D> GenerateExhaustiveSearchCandidates(
       const SearchParameters& search_parameters) const;
 
+  //基于proto定义的参数
   const proto::RealTimeCorrelativeScanMatcherOptions options_;
 };
 

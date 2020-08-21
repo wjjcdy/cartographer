@@ -44,6 +44,7 @@ class CeresPose {
   double* rotation() { return data_->rotation.data(); }
   const double* rotation() const { return data_->rotation.data(); }
 
+  // 位置和姿态， 其中角度采用4元数
   struct Data {
     std::array<double, 3> translation;
     // Rotation quaternion as (w, x, y, z).

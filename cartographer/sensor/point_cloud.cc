@@ -22,6 +22,7 @@
 namespace cartographer {
 namespace sensor {
 
+// 点云坐标转换
 PointCloud TransformPointCloud(const PointCloud& point_cloud,
                                const transform::Rigid3f& transform) {
   PointCloud result;

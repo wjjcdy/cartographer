@@ -24,6 +24,15 @@ namespace cartographer {
 namespace mapping {
 namespace scan_matching {
 
+// 搜索空间参数设置
+// input:
+/*
+  平移搜索窗口大小，为实际搜索的一半，实际上为2倍，
+  角度搜索窗口大小，
+  当前帧点云，
+  分辨率
+
+ */
 SearchParameters::SearchParameters(const double linear_search_window,
                                    const double angular_search_window,
                                    const sensor::PointCloud& point_cloud,
@@ -31,19 +40,24 @@ SearchParameters::SearchParameters(const double linear_search_window,
     : resolution(resolution) {
   // We set this value to something on the order of resolution to make sure that
   // the std::acos() below is defined.
+  // 计算最远距离，不小于3m，根据分辨率换算最远像素个数
   float max_scan_range = 3.f * resolution;
   for (const sensor::RangefinderPoint& point : point_cloud) {
     const float range = point.position.head<2>().norm();
     max_scan_range = std::max(range, max_scan_range);
   }
   const double kSafetyMargin = 1. - 1e-3;
+  // 计算角度搜索分辨率
   angular_perturbation_step_size =
       kSafetyMargin * std::acos(1. - common::Pow2(resolution) /
                                          (2. * common::Pow2(max_scan_range)));
   num_angular_perturbations =
       std::ceil(angular_search_window / angular_perturbation_step_size);
+
+  // 根据窗口，分辨率，获取窗口内取样个数
   num_scans = 2 * num_angular_perturbations + 1;
 
+  // 设置xy窗口边界
   const int num_linear_perturbations =
       std::ceil(linear_search_window / resolution);
   linear_bounds.reserve(num_scans);
@@ -90,14 +104,18 @@ void SearchParameters::ShrinkToFit(const std::vector<DiscreteScan2D>& scans,
   }
 }
 
+// 根据角度分辨率和角度范围，生成角度序列
+// 然后对点云进行旋转变换
 std::vector<sensor::PointCloud> GenerateRotatedScans(
     const sensor::PointCloud& point_cloud,
     const SearchParameters& search_parameters) {
   std::vector<sensor::PointCloud> rotated_scans;
+  // 角度个数
   rotated_scans.reserve(search_parameters.num_scans);
-
+  // 初始角度
   double delta_theta = -search_parameters.num_angular_perturbations *
                        search_parameters.angular_perturbation_step_size;
+  // 更新角度序列，并且对点云进行旋转变换
   for (int scan_index = 0; scan_index < search_parameters.num_scans;
        ++scan_index,
            delta_theta += search_parameters.angular_perturbation_step_size) {
@@ -108,15 +126,24 @@ std::vector<sensor::PointCloud> GenerateRotatedScans(
   return rotated_scans;
 }
 
+// 生成x，y坐标序列，
+// DiscreteScan2D 为（x,y）vector
+// 故生成的为两层 vector
+// 将点云中每个点进行坐标转换，即在初始位置下的坐标（即可认为世界坐标下坐标）
 std::vector<DiscreteScan2D> DiscretizeScans(
     const MapLimits& map_limits, const std::vector<sensor::PointCloud>& scans,
     const Eigen::Translation2f& initial_translation) {
   std::vector<DiscreteScan2D> discrete_scans;
+  //获取已经角度搜索空间后的序列个数
   discrete_scans.reserve(scans.size());
+  // 
   for (const sensor::PointCloud& scan : scans) {
+    //填入一个空的元素，空元素为vector
     discrete_scans.emplace_back();
+    //定义vector的大小
     discrete_scans.back().reserve(scan.size());
     for (const sensor::RangefinderPoint& point : scan) {
+      // 计算点云中每个点在初始位置下的坐标
       const Eigen::Vector2f translated_point =
           Eigen::Affine2f(initial_translation) * point.position.head<2>();
       discrete_scans.back().push_back(

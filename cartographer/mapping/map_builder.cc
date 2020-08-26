@@ -41,6 +41,7 @@ namespace {
 
 using mapping::proto::SerializedData;
 
+// 仅选择其中的距离传感器，如激光雷达信息
 std::vector<std::string> SelectRangeSensorIds(
     const std::set<MapBuilder::SensorId>& expected_sensor_ids) {
   std::vector<std::string> range_sensor_ids;
@@ -56,6 +57,7 @@ void MaybeAddPureLocalizationTrimmer(
     const int trajectory_id,
     const proto::TrajectoryBuilderOptions& trajectory_options,
     PoseGraph* pose_graph) {
+  // 纯定位模式
   if (trajectory_options.pure_localization()) {
     LOG(WARNING)
         << "'TrajectoryBuilderOptions::pure_localization' field is deprecated. "
@@ -73,6 +75,7 @@ void MaybeAddPureLocalizationTrimmer(
 
 }  // namespace
 
+// 初始化，读取配置信息
 proto::MapBuilderOptions CreateMapBuilderOptions(
     common::LuaParameterDictionary* const parameter_dictionary) {
   proto::MapBuilderOptions options;
@@ -91,10 +94,12 @@ proto::MapBuilderOptions CreateMapBuilderOptions(
   return options;
 }
 
+// 构建函数
 MapBuilder::MapBuilder(const proto::MapBuilderOptions& options)
     : options_(options), thread_pool_(options.num_background_threads()) {
   CHECK(options.use_trajectory_builder_2d() ^
         options.use_trajectory_builder_3d());
+  //创建2d地图优化器，用于构建全局地图和闭环操作
   if (options.use_trajectory_builder_2d()) {
     pose_graph_ = absl::make_unique<PoseGraph2D>(
         options_.pose_graph_options(),
@@ -116,11 +121,15 @@ MapBuilder::MapBuilder(const proto::MapBuilderOptions& options)
   }
 }
 
+
+// 增加轨迹节点方法，其主要作用是添加submap中的一帧信息，构建submap
 int MapBuilder::AddTrajectoryBuilder(
     const std::set<SensorId>& expected_sensor_ids,
     const proto::TrajectoryBuilderOptions& trajectory_options,
     LocalSlamResultCallback local_slam_result_callback) {
+      //规划器含有局部规划器当前个数，即为新的id
   const int trajectory_id = trajectory_builders_.size();
+  // 3d
   if (options_.use_trajectory_builder_3d()) {
     std::unique_ptr<LocalTrajectoryBuilder3D> local_trajectory_builder;
     if (trajectory_options.has_trajectory_builder_3d_options()) {
@@ -137,13 +146,18 @@ int MapBuilder::AddTrajectoryBuilder(
             static_cast<PoseGraph3D*>(pose_graph_.get()),
             local_slam_result_callback)));
   } else {
+    // 2d 处理, 构建local规划器，没有闭环能力，实际应该是每个submap的local slam
+    // 仅选择距离传感器描述信息，用于slam
     std::unique_ptr<LocalTrajectoryBuilder2D> local_trajectory_builder;
     if (trajectory_options.has_trajectory_builder_2d_options()) {
       local_trajectory_builder = absl::make_unique<LocalTrajectoryBuilder2D>(
           trajectory_options.trajectory_builder_2d_options(),
           SelectRangeSensorIds(expected_sensor_ids));
     }
+    // 定义闭环节点
     DCHECK(dynamic_cast<PoseGraph2D*>(pose_graph_.get()));
+    // 将每个局部规划器，放入队列中， 包含规划器描述，需要校准的sensor， 当前id， 期望的sensor类型
+    // 每个局部规划器需create 全局规划器，局部slam采用回调方法
     trajectory_builders_.push_back(absl::make_unique<CollatedTrajectoryBuilder>(
         trajectory_options, sensor_collator_.get(), trajectory_id,
         expected_sensor_ids,
@@ -152,43 +166,62 @@ int MapBuilder::AddTrajectoryBuilder(
             static_cast<PoseGraph2D*>(pose_graph_.get()),
             local_slam_result_callback)));
   }
+  //??????????
+  //好像是判断是否为纯定位模式，可以不用闭环处理
   MaybeAddPureLocalizationTrimmer(trajectory_id, trajectory_options,
                                   pose_graph_.get());
 
+  // 如果该轨迹有初始pose；开始一条轨迹前我们是否已知初始位姿。
+  // 这对应的情况就是比如说，我们检测到了一个Landmark。那么这时，我们可以新增加一条trajectory，
+  // 增加新的trajectory时设置has.initial_trajectory_pose为真，
+  // 然后根据机器人与Landmark之间的相对位姿推算机器人相对于世界坐标系的相对位姿。
+  // 以该位姿作为新增加的trajectory的初始位姿。这样情况下，在检测到Landmark时就能有效降低累积误差。
   if (trajectory_options.has_initial_trajectory_pose()) {
+    //获取配置中的初始位置
     const auto& initial_trajectory_pose =
         trajectory_options.initial_trajectory_pose();
+
+    // 闭环pose_graph_设置初始位置，即当前ID，与初始ID的位置约束
     pose_graph_->SetInitialTrajectoryPose(
         trajectory_id, initial_trajectory_pose.to_trajectory_id(),
         transform::ToRigid3(initial_trajectory_pose.relative_pose()),
         common::FromUniversal(initial_trajectory_pose.timestamp()));
   }
+
+  // 定义所有期望的即设置的 sensor种类配置转换成proto
   proto::TrajectoryBuilderOptionsWithSensorIds options_with_sensor_ids_proto;
   for (const auto& sensor_id : expected_sensor_ids) {
     *options_with_sensor_ids_proto.add_sensor_id() = ToProto(sensor_id);
   }
+
+  // 轨迹配置和传感器配置融合
   *options_with_sensor_ids_proto.mutable_trajectory_builder_options() =
       trajectory_options;
+  // 将配置内容放入规划器队列配置中
   all_trajectory_builder_options_.push_back(options_with_sensor_ids_proto);
   CHECK_EQ(trajectory_builders_.size(), all_trajectory_builder_options_.size());
   return trajectory_id;
 }
 
+// 从序列化中提取并加入轨迹vector中 和上一个函数一致，今参数传递方式不同
 int MapBuilder::AddTrajectoryForDeserialization(
     const proto::TrajectoryBuilderOptionsWithSensorIds&
         options_with_sensor_ids_proto) {
   const int trajectory_id = trajectory_builders_.size();
   trajectory_builders_.emplace_back();
   all_trajectory_builder_options_.push_back(options_with_sensor_ids_proto);
+  //检查是否相等，但是trajectory_builders_增加了空的
   CHECK_EQ(trajectory_builders_.size(), all_trajectory_builder_options_.size());
   return trajectory_id;
 }
 
+//猜测应该是submap的边界，此id为submap最后一个轨迹点
 void MapBuilder::FinishTrajectory(const int trajectory_id) {
   sensor_collator_->FinishTrajectory(trajectory_id);
   pose_graph_->FinishTrajectory(trajectory_id);
 }
 
+// 给定的submap id 获取proto
 std::string MapBuilder::SubmapToProto(
     const SubmapId& submap_id, proto::SubmapQuery::Response* const response) {
   if (submap_id.trajectory_id < 0 ||
@@ -198,6 +231,7 @@ std::string MapBuilder::SubmapToProto(
            std::to_string(num_trajectory_builders()) + " trajectories.";
   }
 
+  // 从此应该可看错pose_graph_里面维护了submap序列
   const auto submap_data = pose_graph_->GetSubmapData(submap_id);
   if (submap_data.submap == nullptr) {
     return "Requested submap " + std::to_string(submap_id.submap_index) +
@@ -208,12 +242,14 @@ std::string MapBuilder::SubmapToProto(
   return "";
 }
 
+// 把当前建图状态序列化
 void MapBuilder::SerializeState(bool include_unfinished_submaps,
                                 io::ProtoStreamWriterInterface* const writer) {
   io::WritePbStream(*pose_graph_, all_trajectory_builder_options_, writer,
                     include_unfinished_submaps);
 }
 
+// 将序列化的状态写入文件
 bool MapBuilder::SerializeStateToFile(bool include_unfinished_submaps,
                                       const std::string& filename) {
   io::ProtoStreamWriter writer(filename);
@@ -222,6 +258,7 @@ bool MapBuilder::SerializeStateToFile(bool include_unfinished_submaps,
   return (writer.Close());
 }
 
+// 将文件中描述进行解析
 std::map<int, int> MapBuilder::LoadState(
     io::ProtoStreamReaderInterface* const reader, bool load_frozen_state) {
   io::ProtoStreamDeserializer deserializer(reader);
@@ -392,6 +429,7 @@ std::map<int, int> MapBuilder::LoadState(
   return trajectory_remapping;
 }
 
+// 从文件中读取当前slam中间所有状态
 std::map<int, int> MapBuilder::LoadStateFromFile(
     const std::string& state_filename, const bool load_frozen_state) {
   const std::string suffix = ".pbstream";

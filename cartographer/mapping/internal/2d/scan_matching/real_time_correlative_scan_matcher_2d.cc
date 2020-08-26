@@ -58,17 +58,21 @@ float ComputeCandidateScore(const TSDF2D& tsdf,
   return candidate_score;
 }
 
+// 栅格地图为概率图模式，获取匹配似然的置信度
 float ComputeCandidateScore(const ProbabilityGrid& probability_grid,
                             const DiscreteScan2D& discrete_scan,
                             int x_index_offset, int y_index_offset) {
   float candidate_score = 0.f;
+  //遍历此帧中点云所有point在概率图中的概率和
   for (const Eigen::Array2i& xy_index : discrete_scan) {
     const Eigen::Array2i proposed_xy_index(xy_index.x() + x_index_offset,
                                            xy_index.y() + y_index_offset);
+    // 通过查表读取其概率值
     const float probability =
         probability_grid.GetProbability(proposed_xy_index);
     candidate_score += probability;
   }
+  // 归一化
   candidate_score /= static_cast<float>(discrete_scan.size());
   CHECK_GT(candidate_score, 0.f);
   return candidate_score;
@@ -162,8 +166,10 @@ double RealTimeCorrelativeScanMatcher2D::Match(
   // 计算当前帧在角度、x、y三层窗口中每个状态在grid地图中的匹配的评分
   ScoreCandidates(grid, discrete_scans, search_parameters, &candidates);
 
+  //采用标准库，迭代获取最大置信度元素
   const Candidate2D& best_candidate =
       *std::max_element(candidates.begin(), candidates.end());
+  // 坐标转换为全局坐标
   *pose_estimate = transform::Rigid2d(
       {initial_pose_estimate.translation().x() + best_candidate.x,
        initial_pose_estimate.translation().y() + best_candidate.y},
@@ -192,6 +198,7 @@ void RealTimeCorrelativeScanMatcher2D::ScoreCandidates(
             candidate.y_index_offset);
         break;
     }
+    // 以上归一化，此处没看明白????，为什么匹配置信度需要加权重，感觉像高斯分布的概率权重
     candidate.score *=
         std::exp(-common::Pow2(std::hypot(candidate.x, candidate.y) *
                                    options_.translation_delta_cost_weight() +

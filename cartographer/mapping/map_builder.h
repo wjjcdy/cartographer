@@ -67,10 +67,12 @@ class MapBuilder : public MapBuilderInterface {
   std::map<int, int> LoadStateFromFile(const std::string &filename,
                                        const bool load_frozen_state) override;
 
+  // 重载调用pose_graph_
   mapping::PoseGraphInterface *pose_graph() override {
     return pose_graph_.get();
   }
 
+  // 重载调用trajectory_builders_
   int num_trajectory_builders() const override {
     return trajectory_builders_.size();
   }
@@ -87,15 +89,15 @@ class MapBuilder : public MapBuilderInterface {
 
  private:
   const proto::MapBuilderOptions options_;
-  common::ThreadPool thread_pool_;
+  common::ThreadPool thread_pool_;  // 线程
 
-  std::unique_ptr<PoseGraph> pose_graph_;
+  std::unique_ptr<PoseGraph> pose_graph_;  // 用于闭环， 包括ID，位置， 约束， 即每个submap的相关信息，所有submap一起进行闭环
 
-  std::unique_ptr<sensor::CollatorInterface> sensor_collator_;
+  std::unique_ptr<sensor::CollatorInterface> sensor_collator_; //Sensor 收集
   std::vector<std::unique_ptr<mapping::TrajectoryBuilderInterface>>
-      trajectory_builders_;
+      trajectory_builders_;                                    // trajectory build 序列， 每个序列可认为是维护了一个submap
   std::vector<proto::TrajectoryBuilderOptionsWithSensorIds>
-      all_trajectory_builder_options_;
+      all_trajectory_builder_options_;                         // 每个trajectory 对应的 配置信息
 };
 
 }  // namespace mapping

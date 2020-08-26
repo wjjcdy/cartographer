@@ -39,6 +39,7 @@ namespace mapping {
 // Implementations wire up the complete SLAM stack.
 class MapBuilderInterface {
  public:
+ // 回调函数
   using LocalSlamResultCallback =
       TrajectoryBuilderInterface::LocalSlamResultCallback;
 
@@ -58,6 +59,7 @@ class MapBuilderInterface {
 
   // Creates a new trajectory and returns its index. Querying the trajectory
   // builder for it will return 'nullptr'.
+  //反序列化,从一个序列化的数据中构造出一个trajectory并返回他的index
   virtual int AddTrajectoryForDeserialization(
       const proto::TrajectoryBuilderOptionsWithSensorIds&
           options_with_sensor_ids_proto) = 0;
@@ -65,11 +67,13 @@ class MapBuilderInterface {
   // Returns the 'TrajectoryBuilderInterface' corresponding to the specified
   // 'trajectory_id' or 'nullptr' if the trajectory has no corresponding
   // builder.
+  // 给定id 获取trajectory指针
   virtual mapping::TrajectoryBuilderInterface* GetTrajectoryBuilder(
       int trajectory_id) const = 0;
 
   // Marks the TrajectoryBuilder corresponding to 'trajectory_id' as finished,
   // i.e. no further sensor data is expected.
+  // 指定某ID为结束，则不再有新的加入
   virtual void FinishTrajectory(int trajectory_id) = 0;
 
   // Fills the SubmapQuery::Response corresponding to 'submap_id'. Returns an
@@ -81,6 +85,7 @@ class MapBuilderInterface {
   // 'include_unfinished_submaps' is set to true, unfinished submaps, i.e.
   // submaps that have not yet received all rangefinder data insertions, will
   // be included in the serialized state.
+  // 序列化
   virtual void SerializeState(bool include_unfinished_submaps,
                               io::ProtoStreamWriterInterface* writer) = 0;
 
@@ -102,10 +107,12 @@ class MapBuilderInterface {
   virtual std::map<int /* trajectory id in proto */, int /* trajectory id */>
   LoadStateFromFile(const std::string& filename, bool load_frozen_state) = 0;
 
+  // 返回trajectory 个数
   virtual int num_trajectory_builders() const = 0;
 
   virtual mapping::PoseGraphInterface* pose_graph() = 0;
 
+  //获取所有TrajectoryBuilder的配置项  
   virtual const std::vector<proto::TrajectoryBuilderOptionsWithSensorIds>&
   GetAllTrajectoryBuilderOptions() const = 0;
 };

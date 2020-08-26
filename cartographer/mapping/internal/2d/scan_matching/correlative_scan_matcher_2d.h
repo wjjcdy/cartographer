@@ -98,6 +98,7 @@ struct Candidate2D {
   // Score, higher is better.
   float score = 0.f;
 
+  //定义符合，用于标准排序
   bool operator<(const Candidate2D& other) const { return score < other.score; }
   bool operator>(const Candidate2D& other) const { return score > other.score; }
 };

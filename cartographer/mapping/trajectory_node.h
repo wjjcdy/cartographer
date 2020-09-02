@@ -41,16 +41,20 @@ struct TrajectoryNodePose {
   absl::optional<ConstantPoseData> constant_pose_data;
 };
 
+// 轨迹节点结构体
 struct TrajectoryNode {
+  // 轨迹节点中传感器数据结构体
   struct Data {
     common::Time time;
 
     // Transform to approximately gravity align the tracking frame as
     // determined by local SLAM.
+    // 旋转矩阵的四元数，为雷达与水平方向的俯仰夹角，用于在水平方向进行投影
     Eigen::Quaterniond gravity_alignment;
 
     // Used for loop closure in 2D: voxel filtered returns in the
     // 'gravity_alignment' frame.
+    // 水平方向上投影后的对应点云，若无imu可认为一直在水平面
     sensor::PointCloud filtered_gravity_aligned_point_cloud;
 
     // Used for loop closure in 3D.
@@ -59,6 +63,7 @@ struct TrajectoryNode {
     Eigen::VectorXf rotational_scan_matcher_histogram;
 
     // The node pose in the local SLAM frame.
+    // 节点在local submap中的位置
     transform::Rigid3d local_pose;
   };
 

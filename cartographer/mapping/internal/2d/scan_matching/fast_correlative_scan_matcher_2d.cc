@@ -88,6 +88,9 @@ CreateFastCorrelativeScanMatcherOptions2D(
   return options;
 }
 
+// 预处理的栅格地图构造函数
+// 大小在x和y方向均放大width个
+// 原地图起点的偏移则平移width
 PrecomputationGrid2D::PrecomputationGrid2D(
     const Grid2D& grid, const CellLimits& limits, const int width,
     std::vector<float>* reusable_intermediate_grid)
@@ -168,23 +171,32 @@ uint8 PrecomputationGrid2D::ComputeCellValue(const float probability) const {
   return cell_value;
 }
 
+// 预处理grid地图堆栈构造函数
 PrecomputationGridStack2D::PrecomputationGridStack2D(
     const Grid2D& grid,
     const proto::FastCorrelativeScanMatcherOptions2D& options) {
   CHECK_GE(options.branch_and_bound_depth(), 1);
+  // 最大宽度是原来2倍
   const int max_width = 1 << (options.branch_and_bound_depth() - 1);
+  // precomputation_grids_开辟与原来宽度一样大小空间
   precomputation_grids_.reserve(options.branch_and_bound_depth());
   std::vector<float> reusable_intermediate_grid;
+  // 赋值原来grid limit参数
   const CellLimits limits = grid.limits().cell_limits();
+  // 开辟一个vector，其大小为
   reusable_intermediate_grid.reserve((limits.num_x_cells + max_width - 1) *
                                      limits.num_y_cells);
   for (int i = 0; i != options.branch_and_bound_depth(); ++i) {
+    //宽度序列为0,2,4,6,8,10......
     const int width = 1 << i;
     precomputation_grids_.emplace_back(grid, limits, width,
                                        &reusable_intermediate_grid);
   }
 }
 
+
+//构造函数
+// input: 栅格图， 配置参数
 FastCorrelativeScanMatcher2D::FastCorrelativeScanMatcher2D(
     const Grid2D& grid,
     const proto::FastCorrelativeScanMatcherOptions2D& options)
@@ -195,13 +207,28 @@ FastCorrelativeScanMatcher2D::FastCorrelativeScanMatcher2D(
 
 FastCorrelativeScanMatcher2D::~FastCorrelativeScanMatcher2D() {}
 
+// 匹配函数
+/*
+input:
+当前帧估计位置（里程计等提供的初始位置）
+当前帧点云（即以激光雷达为坐标系的点云）
+最小置信度
+（grid在构造函数已经传递）
+
+output：
+置信度清单
+匹配后输出位置
+ */
 bool FastCorrelativeScanMatcher2D::Match(
     const transform::Rigid2d& initial_pose_estimate,
     const sensor::PointCloud& point_cloud, const float min_score, float* score,
     transform::Rigid2d* pose_estimate) const {
+  //根据配置窗口大小和点云距离范围，栅格分辨率获取量化遍历空间
   const SearchParameters search_parameters(options_.linear_search_window(),
                                            options_.angular_search_window(),
                                            point_cloud, limits_.resolution());
+
+  // 根据遍历参数进行匹配
   return MatchWithSearchParameters(search_parameters, initial_pose_estimate,
                                    point_cloud, min_score, score,
                                    pose_estimate);
@@ -233,20 +260,28 @@ bool FastCorrelativeScanMatcher2D::MatchWithSearchParameters(
   CHECK(pose_estimate != nullptr);
 
   const Eigen::Rotation2Dd initial_rotation = initial_pose_estimate.rotation();
+  // 将点云旋转至初始位置（即估计位置）航向方向上
   const sensor::PointCloud rotated_point_cloud = sensor::TransformPointCloud(
       point_cloud,
       transform::Rigid3f::Rotation(Eigen::AngleAxisf(
           initial_rotation.cast<float>().angle(), Eigen::Vector3f::UnitZ())));
+  // 根据将角度窗口按照一定分辨率划分，并根据每一个旋转角度将点云旋转，生成N个点云
   const std::vector<sensor::PointCloud> rotated_scans =
       GenerateRotatedScans(rotated_point_cloud, search_parameters);
+  
+  // 将所有点云转换到初始位置上
   const std::vector<DiscreteScan2D> discrete_scans = DiscretizeScans(
       limits_, rotated_scans,
       Eigen::Translation2f(initial_pose_estimate.translation().x(),
                            initial_pose_estimate.translation().y()));
+
+  // 修复下所有点云的大小在空间的大小，即边界
   search_parameters.ShrinkToFit(discrete_scans, limits_.cell_limits());
 
+  //
   const std::vector<Candidate2D> lowest_resolution_candidates =
       ComputeLowestResolutionCandidates(discrete_scans, search_parameters);
+
   const Candidate2D best_candidate = BranchAndBound(
       discrete_scans, search_parameters, lowest_resolution_candidates,
       precomputation_grid_stack_->max_depth(), min_score);
@@ -261,22 +296,28 @@ bool FastCorrelativeScanMatcher2D::MatchWithSearchParameters(
   return false;
 }
 
+//获取低分辨率的量化列表
 std::vector<Candidate2D>
 FastCorrelativeScanMatcher2D::ComputeLowestResolutionCandidates(
     const std::vector<DiscreteScan2D>& discrete_scans,
     const SearchParameters& search_parameters) const {
+  // 获取低分辨率的量化列表
   std::vector<Candidate2D> lowest_resolution_candidates =
       GenerateLowestResolutionCandidates(search_parameters);
+
   ScoreCandidates(
       precomputation_grid_stack_->Get(precomputation_grid_stack_->max_depth()),
       discrete_scans, search_parameters, &lowest_resolution_candidates);
   return lowest_resolution_candidates;
 }
 
+//生成低分辨率的量化列表
 std::vector<Candidate2D>
 FastCorrelativeScanMatcher2D::GenerateLowestResolutionCandidates(
     const SearchParameters& search_parameters) const {
+  // 获取分辨率，方法未知？？？？？？？？
   const int linear_step_size = 1 << precomputation_grid_stack_->max_depth();
+  //获取X，Y量化个数
   int num_candidates = 0;
   for (int scan_index = 0; scan_index != search_parameters.num_scans;
        ++scan_index) {

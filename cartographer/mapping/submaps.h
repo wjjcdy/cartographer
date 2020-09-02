@@ -56,6 +56,7 @@ inline uint8 ProbabilityToLogOddsInteger(const float probability) {
 // track of how many range data were inserted into it, and sets
 // 'insertion_finished' when the map no longer changes and is ready for loop
 // closing.
+// 每一个孤立的submap， 每个都有一个local pose， 并且记录所有的点云的信息
 class Submap {
  public:
   Submap(const transform::Rigid3d& local_submap_pose)
@@ -74,17 +75,20 @@ class Submap {
   transform::Rigid3d local_pose() const { return local_pose_; }
 
   // Number of RangeData inserted.
+  // 当前submap中包含的rangedata个数
   int num_range_data() const { return num_range_data_; }
   void set_num_range_data(const int num_range_data) {
     num_range_data_ = num_range_data;
   }
 
+  // 设置是否插入新的range的标志位
   bool insertion_finished() const { return insertion_finished_; }
   void set_insertion_finished(bool insertion_finished) {
     insertion_finished_ = insertion_finished;
   }
 
  private:
+  //仅三个变量，submap的位置， 激光帧个数， 是否插入标志位
   const transform::Rigid3d local_pose_;
   int num_range_data_ = 0;
   bool insertion_finished_ = false;

@@ -39,6 +39,7 @@ namespace mapping {
 // performance reasons.
 class MapLimits {
  public:
+  // 栅格地图的一些属性，包括 分辨率， 栅格x和y方向的个数
   MapLimits(const double resolution, const Eigen::Vector2d& max,
             const CellLimits& cell_limits)
       : resolution_(resolution), max_(max), cell_limits_(cell_limits) {
@@ -70,18 +71,21 @@ class MapLimits {
     // Index values are row major and the top left has Eigen::Array2i::Zero()
     // and contains (centered_max_x, centered_max_y). We need to flip and
     // rotate.
+    // 左上角为0,0队列， 但左上角为实际坐标Y最大值
     return Eigen::Array2i(
         common::RoundToInt((max_.y() - point.y()) / resolution_ - 0.5),
         common::RoundToInt((max_.x() - point.x()) / resolution_ - 0.5));
   }
 
   // Returns the center of the cell at 'cell_index'.
+  // 根据栅格索引，转换为空间坐标
   Eigen::Vector2f GetCellCenter(const Eigen::Array2i cell_index) const {
     return {max_.x() - resolution() * (cell_index[1] + 0.5),
             max_.y() - resolution() * (cell_index[0] + 0.5)};
   }
 
   // Returns true if the ProbabilityGrid contains 'cell_index'.
+  // 判断当前索引是否在大小范围内
   bool Contains(const Eigen::Array2i& cell_index) const {
     return (Eigen::Array2i(0, 0) <= cell_index).all() &&
            (cell_index <

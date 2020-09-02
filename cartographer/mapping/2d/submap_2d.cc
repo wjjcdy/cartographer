@@ -67,6 +67,7 @@ proto::SubmapsOptions2D CreateSubmapsOptions2D(
   return options;
 }
 
+// 构造函数，初始位置的朝向均设置为0
 Submap2D::Submap2D(const Eigen::Vector2f& origin, std::unique_ptr<Grid2D> grid,
                    ValueConversionTables* conversion_tables)
     : Submap(transform::Rigid3d::Translation(
@@ -75,6 +76,7 @@ Submap2D::Submap2D(const Eigen::Vector2f& origin, std::unique_ptr<Grid2D> grid,
   grid_ = std::move(grid);
 }
 
+// 从proto中构造submap
 Submap2D::Submap2D(const proto::Submap2D& proto,
                    ValueConversionTables* conversion_tables)
     : Submap(transform::ToRigid3(proto.local_pose())),
@@ -93,6 +95,7 @@ Submap2D::Submap2D(const proto::Submap2D& proto,
   set_insertion_finished(proto.finished());
 }
 
+//转换为proto
 proto::Submap Submap2D::ToProto(const bool include_grid_data) const {
   proto::Submap proto;
   auto* const submap_2d = proto.mutable_submap_2d();
@@ -106,6 +109,7 @@ proto::Submap Submap2D::ToProto(const bool include_grid_data) const {
   return proto;
 }
 
+// 从proto中转换submap
 void Submap2D::UpdateFromProto(const proto::Submap& proto) {
   CHECK(proto.has_submap_2d());
   const auto& submap_2d = proto.submap_2d();
@@ -134,19 +138,25 @@ void Submap2D::ToResponseProto(
   grid()->DrawToSubmapTexture(texture, local_pose());
 }
 
+//在本submap中插入新的激光数据，参数：1.激光数据； 2. 激光队列
 void Submap2D::InsertRangeData(
     const sensor::RangeData& range_data,
     const RangeDataInserterInterface* range_data_inserter) {
   CHECK(grid_);
   CHECK(!insertion_finished());
+  // 激光数据帧插入grid中
   range_data_inserter->Insert(range_data, grid_.get());
+  // 激光数据帧个数自加1
   set_num_range_data(num_range_data() + 1);
 }
 
+// 设置submap插入结束，即不再接收新的激光帧
 void Submap2D::Finish() {
   CHECK(grid_);
   CHECK(!insertion_finished());
+  // 根据参数将grid进行修整和裁剪，作为当前submap的栅格图
   grid_ = grid_->ComputeCroppedGrid();
+  // 设置结束标志位
   set_insertion_finished(true);
 }
 

@@ -54,6 +54,7 @@ common::Time GetTime(const T& t) {
 
 // Uniquely identifies a trajectory node using a combination of a unique
 // trajectory ID and a zero-based index of the node inside that trajectory.
+// NodeID 结构体定义，包含两个信息，节点的index和轨迹节点id
 struct NodeId {
   NodeId(int trajectory_id, int node_index)
       : trajectory_id(trajectory_id), node_index(node_index) {}
@@ -62,6 +63,7 @@ struct NodeId {
   int node_index;
 
   bool operator==(const NodeId& other) const {
+    //从左到右顺序遍历
     return std::forward_as_tuple(trajectory_id, node_index) ==
            std::forward_as_tuple(other.trajectory_id, other.node_index);
   }

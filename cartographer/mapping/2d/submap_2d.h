@@ -42,8 +42,10 @@ proto::SubmapsOptions2D CreateSubmapsOptions2D(
 
 class Submap2D : public Submap {
  public:
+  // submap构造函数， 包含1.submap初始位置， 2.grid栅格地图，即坐标和对应占有概率， 3. 浮点数与到uint16转换表格
   Submap2D(const Eigen::Vector2f& origin, std::unique_ptr<Grid2D> grid,
            ValueConversionTables* conversion_tables);
+  // 隐式构造函数，仅有一个参数，后面参数有默认值
   explicit Submap2D(const proto::Submap2D& proto,
                     ValueConversionTables* conversion_tables);
 
@@ -53,6 +55,7 @@ class Submap2D : public Submap {
   void ToResponseProto(const transform::Rigid3d& global_submap_pose,
                        proto::SubmapQuery::Response* response) const override;
 
+  // 返回栅格地图
   const Grid2D* grid() const { return grid_.get(); }
 
   // Insert 'range_data' into this submap using 'range_data_inserter'. The
@@ -62,8 +65,8 @@ class Submap2D : public Submap {
   void Finish();
 
  private:
-  std::unique_ptr<Grid2D> grid_;
-  ValueConversionTables* conversion_tables_;
+  std::unique_ptr<Grid2D> grid_;    // 存储概率地图
+  ValueConversionTables* conversion_tables_;  // 浮点数与到uint16转换表格，估计用于概率图转换成整型进行计算
 };
 
 // The first active submap will be created on the insertion of the first range

@@ -46,6 +46,7 @@ CreateFastCorrelativeScanMatcherOptions2D(
 // A precomputed grid that contains in each cell (x0, y0) the maximum
 // probability in the width x width area defined by x0 <= x < x0 + width and
 // y0 <= y < y0.
+// 预处理的栅格地图
 class PrecomputationGrid2D {
  public:
   PrecomputationGrid2D(const Grid2D& grid, const CellLimits& limits, int width,
@@ -71,6 +72,7 @@ class PrecomputationGrid2D {
   }
 
   // Maps values from [0, 255] to [min_score, max_score].
+  // 转换数据格式，栅格内表示的是0~255非真正得分
   float ToScore(float value) const {
     return min_score_ + value * ((max_score_ - min_score_) / 255.f);
   }
@@ -80,6 +82,7 @@ class PrecomputationGrid2D {
 
   // Offset of the precomputation grid in relation to the 'grid'
   // including the additional 'width' - 1 cells.
+  // 遍历局部块起始坐标在全局块中的坐标
   const Eigen::Array2i offset_;
 
   // Size of the precomputation grid.
@@ -92,16 +95,20 @@ class PrecomputationGrid2D {
   std::vector<uint8> cells_;
 };
 
+//栅格地图预处理堆栈类
 class PrecomputationGridStack2D {
  public:
+  // 构造函数
   PrecomputationGridStack2D(
       const Grid2D& grid,
       const proto::FastCorrelativeScanMatcherOptions2D& options);
 
+  // 栅格地图value值
   const PrecomputationGrid2D& Get(int index) {
     return precomputation_grids_[index];
   }
 
+  // 栅格数量
   int max_depth() const { return precomputation_grids_.size() - 1; }
 
  private:

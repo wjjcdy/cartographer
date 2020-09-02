@@ -107,6 +107,7 @@ void Grid2D::FinishUpdate() {
 
 // Fills in 'offset' and 'limits' to define a subregion of that contains all
 // known cells.
+// 计算全部已知概率的空间的大小
 void Grid2D::ComputeCroppedLimits(Eigen::Array2i* const offset,
                                   CellLimits* const limits) const {
   if (known_cells_box_.isEmpty()) {
@@ -122,29 +123,38 @@ void Grid2D::ComputeCroppedLimits(Eigen::Array2i* const offset,
 // Grows the map as necessary to include 'point'. This changes the meaning of
 // these coordinates going forward. This method must be called immediately
 // after 'FinishUpdate', before any calls to 'ApplyLookupTable'.
+// 更新的地图大小参数， 应该是新加入的laser导致地图变大，需要动态更新栅格地图大小
 void Grid2D::GrowLimits(const Eigen::Vector2f& point) {
   GrowLimits(point, {mutable_correspondence_cost_cells()},
              {kUnknownCorrespondenceValue});
 }
 
+// 更新地图大小，同时将原grid中数据按照位置放入新放大的grid中
 void Grid2D::GrowLimits(const Eigen::Vector2f& point,
                         const std::vector<std::vector<uint16>*>& grids,
                         const std::vector<uint16>& grids_unknown_cell_values) {
   CHECK(update_indices_.empty());
+  //如果当前的存在point不在范围内，即需要更新，采用迭代方法放大地图边界
   while (!limits_.Contains(limits_.GetCellIndex(point))) {
+    //获取原来的地图大小的中心坐标
     const int x_offset = limits_.cell_limits().num_x_cells / 2;
     const int y_offset = limits_.cell_limits().num_y_cells / 2;
+    // grid最大值更新原来的一半， 地图总大小放大一倍。 即从地图中心位置上下左右均放大原大小一半
     const MapLimits new_limits(
         limits_.resolution(),
         limits_.max() +
             limits_.resolution() * Eigen::Vector2d(y_offset, x_offset),
         CellLimits(2 * limits_.cell_limits().num_x_cells,
                    2 * limits_.cell_limits().num_y_cells));
+    // 行数，用于转换1维索引
     const int stride = new_limits.cell_limits().num_x_cells;
+    //新的offset
     const int offset = x_offset + stride * y_offset;
+    //新大小
     const int new_size = new_limits.cell_limits().num_x_cells *
                          new_limits.cell_limits().num_y_cells;
 
+    //更新grid概率，即将原来的概率赋值在新的grid中
     for (size_t grid_index = 0; grid_index < grids.size(); ++grid_index) {
       std::vector<uint16> new_cells(new_size,
                                     grids_unknown_cell_values[grid_index]);

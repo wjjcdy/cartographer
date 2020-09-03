@@ -47,6 +47,7 @@ CreateFastCorrelativeScanMatcherOptions2D(
 // probability in the width x width area defined by x0 <= x < x0 + width and
 // y0 <= y < y0.
 // 预处理的栅格地图
+// 后续会放入搜索堆栈中
 class PrecomputationGrid2D {
  public:
   PrecomputationGrid2D(const Grid2D& grid, const CellLimits& limits, int width,
@@ -103,12 +104,12 @@ class PrecomputationGridStack2D {
       const Grid2D& grid,
       const proto::FastCorrelativeScanMatcherOptions2D& options);
 
-  // 栅格地图value值
+  // 第n层栅格图
   const PrecomputationGrid2D& Get(int index) {
     return precomputation_grids_[index];
   }
 
-  // 栅格数量
+  // 地图搜索层数
   int max_depth() const { return precomputation_grids_.size() - 1; }
 
  private:

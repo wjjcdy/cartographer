@@ -54,6 +54,7 @@ class CeresScanMatcher2D {
 
  private:
   const proto::CeresScanMatcherOptions2D options_;
+  // ceres 求解器配置
   ceres::Solver::Options ceres_solver_options_;
 };
 

@@ -26,10 +26,14 @@ namespace scan_matching {
 
 // Computes the cost of translating 'pose' to 'target_translation'.
 // Cost increases with the solution's distance from 'target_translation'.
+// 平移代价函数
 class TranslationDeltaCostFunctor2D {
  public:
+  // 创建自动求导函数
+  // input: 权重， 目标平移向量
   static ceres::CostFunction* CreateAutoDiffCostFunction(
       const double scaling_factor, const Eigen::Vector2d& target_translation) {
+        // 输出维度2， 输入维度3
     return new ceres::AutoDiffCostFunction<TranslationDeltaCostFunctor2D,
                                            2 /* residuals */,
                                            3 /* pose variables */>(
@@ -38,6 +42,7 @@ class TranslationDeltaCostFunctor2D {
 
   template <typename T>
   bool operator()(const T* const pose, T* residual) const {
+    // 即优化后的位置与目标位置（其他方法得到的结果）的偏移误差
     residual[0] = scaling_factor_ * (pose[0] - x_);
     residual[1] = scaling_factor_ * (pose[1] - y_);
     return true;
@@ -46,6 +51,7 @@ class TranslationDeltaCostFunctor2D {
  private:
   // Constructs a new TranslationDeltaCostFunctor2D from the given
   // 'target_translation' (x, y).
+  // 构造函数
   explicit TranslationDeltaCostFunctor2D(
       const double scaling_factor, const Eigen::Vector2d& target_translation)
       : scaling_factor_(scaling_factor),

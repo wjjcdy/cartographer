@@ -28,8 +28,10 @@ namespace cartographer {
 namespace mapping {
 
 // Represents a 2D grid of probabilities.
+// 概率地图 继承grid类， 只是grid内存储的为概率值
 class ProbabilityGrid : public Grid2D {
  public:
+  // 构造函数，输入地图大小和value和整型数uint16转换表
   explicit ProbabilityGrid(const MapLimits& limits,
                            ValueConversionTables* conversion_tables);
   explicit ProbabilityGrid(const proto::Grid2D& proto,

@@ -19,6 +19,7 @@ namespace cartographer {
 namespace mapping {
 namespace {
 
+// 从proto提取最小free概率值
 float MinCorrespondenceCostFromProto(const proto::Grid2D& proto) {
   if (proto.min_correspondence_cost() == 0.f &&
       proto.max_correspondence_cost() == 0.f) {
@@ -31,6 +32,7 @@ float MinCorrespondenceCostFromProto(const proto::Grid2D& proto) {
   }
 }
 
+// 从proto提取最大free的概率值
 float MaxCorrespondenceCostFromProto(const proto::Grid2D& proto) {
   if (proto.min_correspondence_cost() == 0.f &&
       proto.max_correspondence_cost() == 0.f) {
@@ -44,6 +46,7 @@ float MaxCorrespondenceCostFromProto(const proto::Grid2D& proto) {
 }
 }  // namespace
 
+// 配置grid的参数
 proto::GridOptions2D CreateGridOptions2D(
     common::LuaParameterDictionary* const parameter_dictionary) {
   proto::GridOptions2D options;
@@ -57,6 +60,11 @@ proto::GridOptions2D CreateGridOptions2D(
   return options;
 }
 
+// 构造函数，根据输入参数进行配置
+// 构造栅格地图， 栅格地图存储的都是free的概率
+  // MapLimits包含属性：分辨率， x和y方向上的栅格个数，x和y最大值
+  // min_correspondence_cost: 栅格概率代价最小值即free最小值，即hit最大值
+  // max_correspondence_cost: 栅格概率代价最大值，即free最大值，即hit最小值
 Grid2D::Grid2D(const MapLimits& limits, float min_correspondence_cost,
                float max_correspondence_cost,
                ValueConversionTables* conversion_tables)
@@ -66,12 +74,15 @@ Grid2D::Grid2D(const MapLimits& limits, float min_correspondence_cost,
           kUnknownCorrespondenceValue),
       min_correspondence_cost_(min_correspondence_cost),
       max_correspondence_cost_(max_correspondence_cost),
+      // 实际存储为uint16的整数，此为与cost的转换表格
+      // 获取转换表格
       value_to_correspondence_cost_table_(conversion_tables->GetConversionTable(
           max_correspondence_cost, min_correspondence_cost,
           max_correspondence_cost)) {
   CHECK_LT(min_correspondence_cost_, max_correspondence_cost_);
 }
 
+// 构造函数，直接从proto中解析参数构建
 Grid2D::Grid2D(const proto::Grid2D& proto,
                ValueConversionTables* conversion_tables)
     : limits_(proto.limits()),
@@ -82,6 +93,7 @@ Grid2D::Grid2D(const proto::Grid2D& proto,
           max_correspondence_cost_, min_correspondence_cost_,
           max_correspondence_cost_)) {
   CHECK_LT(min_correspondence_cost_, max_correspondence_cost_);
+  // 是否已知已知区域栅格地图大小, 就获取其大小
   if (proto.has_known_cells_box()) {
     const auto& box = proto.known_cells_box();
     known_cells_box_ =
@@ -96,10 +108,13 @@ Grid2D::Grid2D(const proto::Grid2D& proto,
 }
 
 // Finishes the update sequence.
+// 将需要概率更新的index进行更新，
+// update_indices_ ?????? 没看到在哪赋值
 void Grid2D::FinishUpdate() {
   while (!update_indices_.empty()) {
     DCHECK_GE(correspondence_cost_cells_[update_indices_.back()],
               kUpdateMarker);
+    // 更新的方式减去kUpdateMarker=1 << 15
     correspondence_cost_cells_[update_indices_.back()] -= kUpdateMarker;
     update_indices_.pop_back();
   }
@@ -110,6 +125,7 @@ void Grid2D::FinishUpdate() {
 // 计算全部已知概率的空间的大小
 void Grid2D::ComputeCroppedLimits(Eigen::Array2i* const offset,
                                   CellLimits* const limits) const {
+  // 如果是空的，则输出一个1*1的边界
   if (known_cells_box_.isEmpty()) {
     *offset = Eigen::Array2i::Zero();
     *limits = CellLimits(1, 1);
@@ -124,6 +140,7 @@ void Grid2D::ComputeCroppedLimits(Eigen::Array2i* const offset,
 // these coordinates going forward. This method must be called immediately
 // after 'FinishUpdate', before any calls to 'ApplyLookupTable'.
 // 更新的地图大小参数， 应该是新加入的laser导致地图变大，需要动态更新栅格地图大小
+// 采用更新其大小
 void Grid2D::GrowLimits(const Eigen::Vector2f& point) {
   GrowLimits(point, {mutable_correspondence_cost_cells()},
              {kUnknownCorrespondenceValue});
@@ -134,9 +151,9 @@ void Grid2D::GrowLimits(const Eigen::Vector2f& point,
                         const std::vector<std::vector<uint16>*>& grids,
                         const std::vector<uint16>& grids_unknown_cell_values) {
   CHECK(update_indices_.empty());
-  //如果当前的存在point不在范围内，即需要更新，采用迭代方法放大地图边界
+  //如果当前的存在point不在范围内，即需要更新，采用迭代方法放大地图边界，
   while (!limits_.Contains(limits_.GetCellIndex(point))) {
-    //获取原来的地图大小的中心坐标
+    //获取原来的地图大小的中心坐标，即栅格索引
     const int x_offset = limits_.cell_limits().num_x_cells / 2;
     const int y_offset = limits_.cell_limits().num_y_cells / 2;
     // grid最大值更新原来的一半， 地图总大小放大一倍。 即从地图中心位置上下左右均放大原大小一半
@@ -167,6 +184,7 @@ void Grid2D::GrowLimits(const Eigen::Vector2f& point,
       *grids[grid_index] = new_cells;
     }
     limits_ = new_limits;
+    // 重新计算有效栅格空间边界，即由于起点发生改变，则矩形框的坐标需进行转换
     if (!known_cells_box_.isEmpty()) {
       known_cells_box_.translate(Eigen::Vector2i(x_offset, y_offset));
     }

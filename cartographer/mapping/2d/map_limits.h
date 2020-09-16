@@ -72,6 +72,7 @@ class MapLimits {
     // and contains (centered_max_x, centered_max_y). We need to flip and
     // rotate.
     // 左上角为0,0队列， 但左上角为实际坐标Y最大值
+    // ??????? 镜像关系，没看懂， 理论上仅需上下镜像即可
     return Eigen::Array2i(
         common::RoundToInt((max_.y() - point.y()) / resolution_ - 0.5),
         common::RoundToInt((max_.x() - point.x()) / resolution_ - 0.5));
@@ -85,7 +86,7 @@ class MapLimits {
   }
 
   // Returns true if the ProbabilityGrid contains 'cell_index'.
-  // 判断当前索引是否在大小范围内
+  // 判断当前索引是否在大小范围内， x，y均在范围内
   bool Contains(const Eigen::Array2i& cell_index) const {
     return (Eigen::Array2i(0, 0) <= cell_index).all() &&
            (cell_index <
@@ -94,9 +95,9 @@ class MapLimits {
   }
 
  private:
-  double resolution_;
-  Eigen::Vector2d max_;
-  CellLimits cell_limits_;
+  double resolution_;      // 
+  Eigen::Vector2d max_;    // 地图x，y最大值
+  CellLimits cell_limits_; // grid 图 xy方向最大个数
 };
 
 inline proto::MapLimits ToProto(const MapLimits& map_limits) {

@@ -45,14 +45,17 @@ inline uint16 BoundedFloatToValue(const float float_value,
 
 }  // namespace
 
+// 概率用odd模型表示
 inline float Odds(float probability) {
   return probability / (1.f - probability);
 }
 
+// 转换为概率模型
 inline float ProbabilityFromOdds(const float odds) {
   return odds / (odds + 1.f);
 }
 
+// 概率转换为代价
 inline float ProbabilityToCorrespondenceCost(const float probability) {
   return 1.f - probability;
 }

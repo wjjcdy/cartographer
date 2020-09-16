@@ -52,10 +52,12 @@ inline proto::CellLimits ToProto(const CellLimits& cell_limits) {
 }
 
 // Iterates in row-major order through a range of xy-indices.
+// xy 坐标二维迭代器
 class XYIndexRangeIterator
     : public std::iterator<std::input_iterator_tag, Eigen::Array2i> {
  public:
   // Constructs a new iterator for the specified range.
+  // 定义一个迭代器，输入最小x，y坐标和最大
   XYIndexRangeIterator(const Eigen::Array2i& min_xy_index,
                        const Eigen::Array2i& max_xy_index)
       : min_xy_index_(min_xy_index),
@@ -63,15 +65,18 @@ class XYIndexRangeIterator
         xy_index_(min_xy_index) {}
 
   // Constructs a new iterator for everything contained in 'cell_limits'.
+  // 包含地图每个单元的迭代器
   explicit XYIndexRangeIterator(const CellLimits& cell_limits)
       : XYIndexRangeIterator(Eigen::Array2i::Zero(),
                              Eigen::Array2i(cell_limits.num_x_cells - 1,
                                             cell_limits.num_y_cells - 1)) {}
 
+  // 重定义迭代
   XYIndexRangeIterator& operator++() {
     // This is a necessary evil. Bounds checking is very expensive and needs to
     // be avoided in production. We have unit tests that exercise this check
     // in debug mode.
+    // 一行一行遍历
     DCHECK(*this != end());
     if (xy_index_.x() < max_xy_index_.x()) {
       ++xy_index_.x();

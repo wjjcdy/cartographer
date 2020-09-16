@@ -47,13 +47,14 @@ class ProbabilityGridRangeDataInserter2D : public RangeDataInserterInterface {
       const ProbabilityGridRangeDataInserter2D&) = delete;
 
   // Inserts 'range_data' into 'probability_grid'.
+  // 栅格概率地图，建图的具体实现
   virtual void Insert(const sensor::RangeData& range_data,
                       GridInterface* grid) const override;
 
  private:
-  const proto::ProbabilityGridRangeDataInserterOptions2D options_;
-  const std::vector<uint16> hit_table_;
-  const std::vector<uint16> miss_table_;
+  const proto::ProbabilityGridRangeDataInserterOptions2D options_;  // 概率图配置信息
+  const std::vector<uint16> hit_table_;                             // 命中表格
+  const std::vector<uint16> miss_table_;                            // 未命中表格
 };
 
 }  // namespace mapping

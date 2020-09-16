@@ -144,7 +144,7 @@ void Submap2D::InsertRangeData(
     const RangeDataInserterInterface* range_data_inserter) {
   CHECK(grid_);
   CHECK(!insertion_finished());
-  // 激光数据帧插入grid中
+  // 激光数据帧插入grid中， 采用虚函数接口调用， 根据不同地图类型具体实现
   range_data_inserter->Insert(range_data, grid_.get());
   // 激光数据帧个数自加1
   set_num_range_data(num_range_data() + 1);
@@ -155,11 +155,13 @@ void Submap2D::Finish() {
   CHECK(grid_);
   CHECK(!insertion_finished());
   // 根据参数将grid进行修整和裁剪，作为当前submap的栅格图
+  // 主要是因为地图扩展的原因，地图大小和内部数据进行了一定了调整， 注： 地图类型不同采用不同的方法
   grid_ = grid_->ComputeCroppedGrid();
   // 设置结束标志位
   set_insertion_finished(true);
 }
 
+// 
 ActiveSubmaps2D::ActiveSubmaps2D(const proto::SubmapsOptions2D& options)
     : options_(options), range_data_inserter_(CreateRangeDataInserter()) {}
 

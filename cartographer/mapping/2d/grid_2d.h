@@ -39,8 +39,8 @@ class Grid2D : public GridInterface {
  public:
   //构造栅格地图， 栅格地图存储的都是free的概率
   // MapLimits包含属性：分辨率， x和y方向上的栅格个数，x和y最大值
-  // min_correspondence_cost: 栅格概率最小值
-  // max_correspondence_cost: 栅格概率最小值，个人猜测应该用于和实际概率的进行转换中的，因grid存储的uint16类型，
+  // min_correspondence_cost: 栅格概率代价最小值即free最小值，即hit最大值
+  // max_correspondence_cost: 栅格概率代价最大值，即free最大值，即hit最小值
   Grid2D(const MapLimits& limits, float min_correspondence_cost,
          float max_correspondence_cost,
          ValueConversionTables* conversion_tables);
@@ -128,6 +128,7 @@ class Grid2D : public GridInterface {
   std::vector<uint16> correspondence_cost_cells_;
   float min_correspondence_cost_;
   float max_correspondence_cost_;
+  // 记录已经更新过的索引
   std::vector<int> update_indices_;
 
   // Bounding box of known cells to efficiently compute cropping limits.

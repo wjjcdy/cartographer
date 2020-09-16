@@ -26,6 +26,7 @@ namespace {
 constexpr uint16 kUpdateMarker = 1u << 15;
 
 // 0 is unknown, [1, 32767] maps to [lower_bound, upper_bound].
+// 具体转换代码，
 float SlowValueToBoundedFloat(const uint16 value, const uint16 unknown_value,
                               const float unknown_result,
                               const float lower_bound,
@@ -36,12 +37,14 @@ float SlowValueToBoundedFloat(const uint16 value, const uint16 unknown_value,
   return value * kScale + (lower_bound - kScale);
 }
 
+// 提前计算所有uint16中的对应有边界范围的float数，即存储到表格中
 std::unique_ptr<std::vector<float>> PrecomputeValueToBoundedFloat(
     const uint16 unknown_value, const float unknown_result,
     const float lower_bound, const float upper_bound) {
   auto result = absl::make_unique<std::vector<float>>();
   size_t num_values = std::numeric_limits<uint16>::max() + 1;
   result->reserve(num_values);
+  // 生成的表格保存至vector中
   for (size_t value = 0; value != num_values; ++value) {
     result->push_back(SlowValueToBoundedFloat(
         static_cast<uint16>(value) & ~kUpdateMarker, unknown_value,
@@ -51,10 +54,18 @@ std::unique_ptr<std::vector<float>> PrecomputeValueToBoundedFloat(
 }
 }  // namespace
 
+// 生成uint16与 free 概率的表格
+// input:
+// 未知时输出结果
+// free下边界
+// free上边界
 const std::vector<float>* ValueConversionTables::GetConversionTable(
     float unknown_result, float lower_bound, float upper_bound) {
+      // 创建一个元组（可不同类型的组，可类似于结构体）
   std::tuple<float, float, float> bounds =
       std::make_tuple(unknown_result, lower_bound, upper_bound);
+  //bounds_to_lookup_table_没找到对应的边界，则重新计算并返回
+  //bounds_to_lookup_table_为map容器，存储不同边界对应的表格
   auto lookup_table_iterator = bounds_to_lookup_table_.find(bounds);
   if (lookup_table_iterator == bounds_to_lookup_table_.end()) {
     auto insertion_result = bounds_to_lookup_table_.emplace(
@@ -62,6 +73,7 @@ const std::vector<float>* ValueConversionTables::GetConversionTable(
                                               upper_bound));
     return insertion_result.first->second.get();
   } else {
+    // 找到直接返回
     return lookup_table_iterator->second.get();
   }
 }

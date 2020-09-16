@@ -40,6 +40,7 @@ TimedRangeData TransformTimedRangeData(const TimedRangeData& range_data,
   };
 }
 
+// 对所有点云根据垂直方向进行滤波，仅考虑水平方向一定范围的点云，即高度需在一定范围内
 RangeData CropRangeData(const RangeData& range_data, const float min_z,
                         const float max_z) {
   return RangeData{range_data.origin,

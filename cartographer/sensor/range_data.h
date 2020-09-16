@@ -29,10 +29,12 @@ namespace sensor {
 // detected. 'misses' are points in the direction of rays for which no return
 // was detected, and were inserted at a configured distance. It is assumed that
 // between the 'origin' and 'misses' is free space.
+// origin 到 misses之间均为 空闲空间
+// returns则为 hit空间
 struct RangeData {
   Eigen::Vector3f origin;
-  PointCloud returns;
-  PointCloud misses;
+  PointCloud returns;   // 有效值, 即有效反射距离值
+  PointCloud misses;    // 无效值，即测距最远值对应的坐标
 };
 
 // Like 'RangeData', but with 'TimedPointClouds'.

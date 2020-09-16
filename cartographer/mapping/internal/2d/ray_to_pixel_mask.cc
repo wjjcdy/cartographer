@@ -36,6 +36,7 @@ std::vector<Eigen::Array2i> RayToPixelMask(const Eigen::Array2i& scaled_begin,
                                            int subpixel_scale) {
   // For simplicity, we order 'scaled_begin' and 'scaled_end' by their x
   // coordinate.
+  // 计算时均认为终点x要大于起点x
   if (scaled_begin.x() > scaled_end.x()) {
     return RayToPixelMask(scaled_end, scaled_begin, subpixel_scale);
   }

@@ -65,7 +65,7 @@ CeresScanMatcher2D::~CeresScanMatcher2D() {}
 //采用ceres库求解
 /*
 input:
-1.
+1.估计位置
 2.初始位置
 3.点云
 4.栅格地图

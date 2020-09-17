@@ -62,8 +62,8 @@ void ProbabilityGrid::SetProbability(const Eigen::Array2i& cell_index,
 //
 // If this is the first call to ApplyOdds() for the specified cell, its value
 // will be set to probability corresponding to 'odds'.
-// ???暂时不理解其作用
-// 猜测是将index的位置进行更新的。
+// 将index的位置进行更新的。
+// 采用的方法是
 bool ProbabilityGrid::ApplyLookupTable(const Eigen::Array2i& cell_index,
                                        const std::vector<uint16>& table) {
   DCHECK_EQ(table.size(), kUpdateMarker);
@@ -76,7 +76,7 @@ bool ProbabilityGrid::ApplyLookupTable(const Eigen::Array2i& cell_index,
     return false;
   }
 
-  // 需更新的index放入队列
+  // 需更新的index放入队列，用于后续finish时，将kUpdateMarker减去，因table表格都加上了个kUpdateMarker，暂时不理解
   mutable_update_indices()->push_back(flat_index);
   // 通过查表进行更新单元
   *cell = table[*cell];

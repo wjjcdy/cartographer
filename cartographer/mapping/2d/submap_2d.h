@@ -80,6 +80,11 @@ class Submap2D : public Submap {
 // considered initialized: the old submap is no longer changed, the "new" submap
 // is now the "old" submap and is used for scan-to-map matching. Moreover, a
 // "new" submap gets created. The "old" submap is forgotten by this object.
+// ActiveSubmaps2D类维护了两个submap,一个old 和一个new，
+// old用于matching，而new用于插入
+// 当new submap达到一定数量时，则停止插入。
+// 抛弃old，将new变为old
+// 创建一个新的new submap
 class ActiveSubmaps2D {
  public:
   explicit ActiveSubmaps2D(const proto::SubmapsOptions2D& options);
@@ -94,15 +99,18 @@ class ActiveSubmaps2D {
   std::vector<std::shared_ptr<const Submap2D>> submaps() const;
 
  private:
+  // 创建插入器接口
   std::unique_ptr<RangeDataInserterInterface> CreateRangeDataInserter();
+  // 创建grid地图接口
   std::unique_ptr<GridInterface> CreateGrid(const Eigen::Vector2f& origin);
   void FinishSubmap();
+  // 加入一个新的submap
   void AddSubmap(const Eigen::Vector2f& origin);
 
-  const proto::SubmapsOptions2D options_;
-  std::vector<std::shared_ptr<Submap2D>> submaps_;
-  std::unique_ptr<RangeDataInserterInterface> range_data_inserter_;
-  ValueConversionTables conversion_tables_;
+  const proto::SubmapsOptions2D options_;                              // 配置信息
+  std::vector<std::shared_ptr<Submap2D>> submaps_;                     // 维护submap2d的列表
+  std::unique_ptr<RangeDataInserterInterface> range_data_inserter_;    // 插入器接口
+  ValueConversionTables conversion_tables_;                            // 浮点数与到uint16转换表格
 };
 
 }  // namespace mapping

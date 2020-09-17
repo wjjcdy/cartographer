@@ -150,7 +150,7 @@ void Submap2D::InsertRangeData(
   set_num_range_data(num_range_data() + 1);
 }
 
-// 设置submap插入结束，即不再接收新的激光帧
+// 设置submap插入结束标志位，即不再接收新的激光帧
 void Submap2D::Finish() {
   CHECK(grid_);
   CHECK(!insertion_finished());
@@ -161,30 +161,44 @@ void Submap2D::Finish() {
   set_insertion_finished(true);
 }
 
-// 
+// ActiveSubmaps2D构造函数，仅传入配置参数
+// 构造时同时创建了插入器
 ActiveSubmaps2D::ActiveSubmaps2D(const proto::SubmapsOptions2D& options)
     : options_(options), range_data_inserter_(CreateRangeDataInserter()) {}
 
+// 获取ActiveSubmaps2D维护的两个submap2d
 std::vector<std::shared_ptr<const Submap2D>> ActiveSubmaps2D::submaps() const {
   return std::vector<std::shared_ptr<const Submap2D>>(submaps_.begin(),
                                                       submaps_.end());
 }
 
+//ActiveSubmaps2D插入一个新的rangedata
 std::vector<std::shared_ptr<const Submap2D>> ActiveSubmaps2D::InsertRangeData(
     const sensor::RangeData& range_data) {
+  // 如果第一次，即无任何submap2d时
+  // 或者如果new的submap的内部含有的激光个数达到配置的阈值
+  // 则需要增加一个新的submap，其submap2d的初始位置，为新range的激光坐标
+  // 注意这是在插入前先进行了判断，也就说上次循环已经满足阈值条件
   if (submaps_.empty() ||
       submaps_.back()->num_range_data() == options_.num_range_data()) {
     AddSubmap(range_data.origin.head<2>());
   }
+
+  //两个submap全部插入新的range_data，表明old的submap2d包含了所有new submap2d内容
   for (auto& submap : submaps_) {
     submap->InsertRangeData(range_data, range_data_inserter_.get());
   }
+  // 如果old的range的数量达到配置的阈值两倍，也表明new的数量也到达了阈值
+  // 则 将old的submap进行结束封装，表明submap结束，设置submap2d 结束标志位，同时也进行裁剪仅保留有效value的边界
   if (submaps_.front()->num_range_data() == 2 * options_.num_range_data()) {
     submaps_.front()->Finish();
   }
   return submaps();
 }
 
+// 创建插入器接口，同时因为根据类型继承，具体实现根据地图类型选择
+// 由于配置采用probability map， 故实际插入器在probability里实现
+// 插入器仅根据配置参数进行构造
 std::unique_ptr<RangeDataInserterInterface>
 ActiveSubmaps2D::CreateRangeDataInserter() {
   switch (options_.range_data_inserter_options().range_data_inserter_type()) {
@@ -201,8 +215,11 @@ ActiveSubmaps2D::CreateRangeDataInserter() {
   }
 }
 
+// 初始化一个空的grid地图，作为submap2d初始空白地图
+// 尽关心概率地图
 std::unique_ptr<GridInterface> ActiveSubmaps2D::CreateGrid(
     const Eigen::Vector2f& origin) {
+  // 初始化默认大小100*100像素点
   constexpr int kInitialSubmapSize = 100;
   float resolution = options_.grid_options_2d().resolution();
   switch (options_.grid_options_2d().grid_type()) {
@@ -233,13 +250,19 @@ std::unique_ptr<GridInterface> ActiveSubmaps2D::CreateGrid(
   }
 }
 
+// 添加一个新的submap
 void ActiveSubmaps2D::AddSubmap(const Eigen::Vector2f& origin) {
+  // 如果已经存在两个submap，即old和new均存在
+  // 则剔除old的submap2d
   if (submaps_.size() >= 2) {
     // This will crop the finished Submap before inserting a new Submap to
     // reduce peak memory usage a bit.
+    // 等待插入结束标志位，即也是submap裁剪结束标志
     CHECK(submaps_.front()->insertion_finished());
+    // 剔除old的submap2d
     submaps_.erase(submaps_.begin());
   }
+  // 插入一个新的submap2d
   submaps_.push_back(absl::make_unique<Submap2D>(
       origin,
       std::unique_ptr<Grid2D>(

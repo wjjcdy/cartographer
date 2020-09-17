@@ -93,6 +93,7 @@ std::vector<uint16> ComputeLookupTableToApplyCorrespondenceCostOdds(
   result.push_back(CorrespondenceCostToValue(ProbabilityToCorrespondenceCost(
                        ProbabilityFromOdds(odds))) +
                    kUpdateMarker);
+  // 针对每一个value均乘以更新系数odds
   for (int cell = 1; cell != kValueCount; ++cell) {
     result.push_back(
         CorrespondenceCostToValue(

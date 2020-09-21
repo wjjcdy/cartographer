@@ -34,9 +34,12 @@ proto::MotionFilterOptions CreateMotionFilterOptions(
   return options;
 }
 
+// 构造函数，运动滤波器，可认为是降采样过程，即根据配置值进行采样
 MotionFilter::MotionFilter(const proto::MotionFilterOptions& options)
     : options_(options) {}
 
+//滤波器实现
+// 判断当前位置和时间，与上刻的时间位置比较，误差是否超出配置阈值
 bool MotionFilter::IsSimilar(const common::Time time,
                              const transform::Rigid3d& pose) {
   LOG_IF_EVERY_N(INFO, num_total_ >= 500, 500)

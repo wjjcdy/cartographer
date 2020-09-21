@@ -41,11 +41,11 @@ class MotionFilter {
   bool IsSimilar(common::Time time, const transform::Rigid3d& pose);
 
  private:
-  const proto::MotionFilterOptions options_;
-  int num_total_ = 0;
+  const proto::MotionFilterOptions options_;   // 配置
+  int num_total_ = 0;                          // 滤波器含有的位置总个数
   int num_different_ = 0;
   common::Time last_time_;
-  transform::Rigid3d last_pose_;
+  transform::Rigid3d last_pose_;               // 
 };
 
 }  // namespace mapping

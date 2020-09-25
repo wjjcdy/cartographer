@@ -33,14 +33,20 @@ namespace mapping {
 proto::PoseExtrapolatorOptions CreatePoseExtrapolatorOptions(
     common::LuaParameterDictionary* const parameter_dictionary);
 
+// 位姿预测器或称为估计器接口类
 class PoseExtrapolatorInterface {
  public:
+  // 估计的结果
   struct ExtrapolationResult {
     // The poses for the requested times at index 0 to N-1.
+    // 历史轨迹
     std::vector<transform::Rigid3f> previous_poses;
     // The pose for the requested time at index N.
+    // 当前位置
     transform::Rigid3d current_pose;
+    // 当前速度
     Eigen::Vector3d current_velocity;
+    // 重力方向
     Eigen::Quaterniond gravity_from_tracking;
   };
 
@@ -60,16 +66,20 @@ class PoseExtrapolatorInterface {
   virtual common::Time GetLastPoseTime() const = 0;
   virtual common::Time GetLastExtrapolatedTime() const = 0;
 
+    // 加入传感器数据用于预测
   virtual void AddPose(common::Time time, const transform::Rigid3d& pose) = 0;
   virtual void AddImuData(const sensor::ImuData& imu_data) = 0;
   virtual void AddOdometryData(const sensor::OdometryData& odometry_data) = 0;
+  // 输出预测值
   virtual transform::Rigid3d ExtrapolatePose(common::Time time) = 0;
 
+    // 包含重力方向信息的预测值
   virtual ExtrapolationResult ExtrapolatePosesWithGravity(
       const std::vector<common::Time>& times) = 0;
 
   // Returns the current gravity alignment estimate as a rotation from
   // the tracking frame into a gravity aligned frame.
+  // 
   virtual Eigen::Quaterniond EstimateGravityOrientation(common::Time time) = 0;
 
  protected:

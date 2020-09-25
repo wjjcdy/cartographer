@@ -86,6 +86,7 @@ PoseExtrapolatorInterface::CreateWithImuData(
   CHECK(!imu_data.empty());
   // TODO(schwoere): Implement/integrate imu based extrapolator.
   CHECK(!options.use_imu_based()) << "Not implemented!";
+  // 初始化基于IMU的估计器
   if (options.use_imu_based()) {
     return ImuBasedPoseExtrapolator::InitializeWithImu(options.imu_based(),
                                                        imu_data, initial_poses);

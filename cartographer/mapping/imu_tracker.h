@@ -47,12 +47,12 @@ class ImuTracker {
   Eigen::Quaterniond orientation() const { return orientation_; }
 
  private:
-  const double imu_gravity_time_constant_;
-  common::Time time_;
-  common::Time last_linear_acceleration_time_;
-  Eigen::Quaterniond orientation_;
-  Eigen::Vector3d gravity_vector_;
-  Eigen::Vector3d imu_angular_velocity_;
+  const double imu_gravity_time_constant_;      // 重力加速度时间更新参数
+  common::Time time_;                           // 积分最新时间戳
+  common::Time last_linear_acceleration_time_;  // 上时刻更新重力加速度时间戳
+  Eigen::Quaterniond orientation_;              // 积分器自身维持的航向值
+  Eigen::Vector3d gravity_vector_;              // 重力加速度向量
+  Eigen::Vector3d imu_angular_velocity_;        // 用于积分的角速度
 };
 
 }  // namespace mapping

@@ -30,22 +30,27 @@ namespace mapping {
 // timing. Up to one message per sensor is buffered, so a delay of the period of
 // the slowest sensor may be introduced, which can be alleviated by passing
 // subdivisions.
+// 主要目的应该是收集各类激光雷达的传感器信息，用于时间的同步。
 class RangeDataCollator {
  public:
+ // 构造函数，输入期望接收的传感器类型，如单线雷达等
   explicit RangeDataCollator(
       const std::vector<std::string>& expected_range_sensor_ids)
       : expected_sensor_ids_(expected_range_sensor_ids.begin(),
                              expected_range_sensor_ids.end()) {}
 
+  // 插入集合
   sensor::TimedPointCloudOriginData AddRangeData(
       const std::string& sensor_id,
       const sensor::TimedPointCloudData& timed_point_cloud_data);
 
  private:
+  // 融合
   sensor::TimedPointCloudOriginData CropAndMerge();
-
+  // 期望处理传感器类型清单
   const std::set<std::string> expected_sensor_ids_;
   // Store at most one message for each sensor.
+  // map 容器，一种传感器至少一帧点云数据
   std::map<std::string, sensor::TimedPointCloudData> id_to_pending_data_;
   common::Time current_start_ = common::Time::min();
   common::Time current_end_ = common::Time::min();

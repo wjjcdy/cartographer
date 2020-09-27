@@ -43,10 +43,12 @@ namespace mapping {
 // TODO(gaschler): Add test for this class similar to the 3D test.
 class LocalTrajectoryBuilder2D {
  public:
+  // 用于存储submap列表数据的结构 
   struct InsertionResult {
     std::shared_ptr<const TrajectoryNode::Data> constant_data;
     std::vector<std::shared_ptr<const Submap2D>> insertion_submaps;
   };
+  // 用于前端匹配的数据结构
   struct MatchingResult {
     common::Time time;
     transform::Rigid3d local_pose;
@@ -58,6 +60,7 @@ class LocalTrajectoryBuilder2D {
   explicit LocalTrajectoryBuilder2D(
       const proto::LocalTrajectoryBuilderOptions2D& options,
       const std::vector<std::string>& expected_range_sensor_ids);
+      
   ~LocalTrajectoryBuilder2D();
 
   LocalTrajectoryBuilder2D(const LocalTrajectoryBuilder2D&) = delete;
@@ -97,26 +100,27 @@ class LocalTrajectoryBuilder2D {
       const sensor::PointCloud& filtered_gravity_aligned_point_cloud);
 
   // Lazily constructs a PoseExtrapolator.
+  // 初始化一个推算器
   void InitializeExtrapolator(common::Time time);
 
-  const proto::LocalTrajectoryBuilderOptions2D options_;
-  ActiveSubmaps2D active_submaps_;
+  const proto::LocalTrajectoryBuilderOptions2D options_;    // 轨迹跟踪器的配置信息
+  ActiveSubmaps2D active_submaps_;                          // 维护正在使用的submap,已分析过，包括栅格地图类型，插入，更新
 
-  MotionFilter motion_filter_;
-  scan_matching::RealTimeCorrelativeScanMatcher2D
+  MotionFilter motion_filter_;                              // 运动滤波器，用来对运动pose进行降采样
+  scan_matching::RealTimeCorrelativeScanMatcher2D           // 相关匹配器，已分析过
       real_time_correlative_scan_matcher_;
-  scan_matching::CeresScanMatcher2D ceres_scan_matcher_;
+  scan_matching::CeresScanMatcher2D ceres_scan_matcher_;    // 优化匹配器，已分析过
 
-  std::unique_ptr<PoseExtrapolator> extrapolator_;
+  std::unique_ptr<PoseExtrapolator> extrapolator_;          // 位置估计器，可根据历史轨迹及其传感器估计下时刻位置
 
-  int num_accumulated_ = 0;
-  sensor::RangeData accumulated_range_data_;
-
+  int num_accumulated_ = 0;                                 // 累计激光点云个数
+  sensor::RangeData accumulated_range_data_;                // 预处理后激光点云，也包含激光原点origin坐标，即经过融合，矫正等操作
+                                                            // 也是核心算法使用的数据结构，用于map 更新和匹配
   absl::optional<std::chrono::steady_clock::time_point> last_wall_time_;
   absl::optional<double> last_thread_cpu_time_seconds_;
   absl::optional<common::Time> last_sensor_time_;
 
-  RangeDataCollator range_data_collator_;
+  RangeDataCollator range_data_collator_;                   // 激光数据收集器，几种激光按照时间戳融合
 };
 
 }  // namespace mapping

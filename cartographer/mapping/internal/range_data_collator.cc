@@ -116,7 +116,7 @@ sensor::TimedPointCloudOriginData RangeDataCollator::CropAndMerge() {
     } else {   
       data = sensor::TimedPointCloudData{
           data.time, data.origin,
-          sensor::TimedPointCloud(overlap_end, ranges.end())};  //感觉没用？？？？？,即使删除了，data也无用了
+          sensor::TimedPointCloud(overlap_end, ranges.end())};
       ++it;
     }
   }

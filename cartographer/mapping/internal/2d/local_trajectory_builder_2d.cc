@@ -310,7 +310,7 @@ LocalTrajectoryBuilder2D::AddAccumulatedRangeData(
     return nullptr;
   }
 
-  // 获取2d位置
+  // 转换位置类型
   // gravity_alignment 为水平投影系数，假设平地则为1 
   const transform::Rigid3d pose_estimate =
       transform::Embed3D(*pose_estimate_2d) * gravity_alignment;

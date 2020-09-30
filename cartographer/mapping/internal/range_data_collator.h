@@ -50,8 +50,9 @@ class RangeDataCollator {
   // 期望处理传感器类型清单
   const std::set<std::string> expected_sensor_ids_;
   // Store at most one message for each sensor.
-  // map 容器，一种传感器至少一帧点云数据
+  // 同步和融合后集合，一种传感器至少一帧点云数据
   std::map<std::string, sensor::TimedPointCloudData> id_to_pending_data_;
+  // 时间同步用于时间解析
   common::Time current_start_ = common::Time::min();
   common::Time current_end_ = common::Time::min();
 };

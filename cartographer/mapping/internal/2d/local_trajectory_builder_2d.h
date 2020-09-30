@@ -45,16 +45,16 @@ class LocalTrajectoryBuilder2D {
  public:
   // 用于存储submap列表数据的结构 
   struct InsertionResult {
-    std::shared_ptr<const TrajectoryNode::Data> constant_data;
-    std::vector<std::shared_ptr<const Submap2D>> insertion_submaps;
+    std::shared_ptr<const TrajectoryNode::Data> constant_data;       // 匹配后的点云结果
+    std::vector<std::shared_ptr<const Submap2D>> insertion_submaps;  // 更新后的submap列表（仅最新的submap）
   };
   // 用于前端匹配的数据结构
   struct MatchingResult {
-    common::Time time;
-    transform::Rigid3d local_pose;
-    sensor::RangeData range_data_in_local;
+    common::Time time;                                               // 时间戳
+    transform::Rigid3d local_pose;                                   // 在submap中位置
+    sensor::RangeData range_data_in_local;                           // 本帧的点云
     // 'nullptr' if dropped by the motion filter.
-    std::unique_ptr<const InsertionResult> insertion_result;
+    std::unique_ptr<const InsertionResult> insertion_result;         // 匹配后的submap结果
   };
 
   explicit LocalTrajectoryBuilder2D(

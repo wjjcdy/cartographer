@@ -22,6 +22,7 @@
 namespace cartographer {
 namespace sensor {
 
+// 点云转移变换
 RangeData TransformRangeData(const RangeData& range_data,
                              const transform::Rigid3f& transform) {
   return RangeData{

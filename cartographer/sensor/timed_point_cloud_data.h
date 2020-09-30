@@ -24,12 +24,14 @@
 namespace cartographer {
 namespace sensor {
 
+// 带时间戳的点云数据
 struct TimedPointCloudData {
   common::Time time;
   Eigen::Vector3f origin;
   TimedPointCloud ranges;
 };
 
+// 多个传感器数据同一时间戳点云集合
 struct TimedPointCloudOriginData {
   struct RangeMeasurement {
     TimedRangefinderPoint point_time;

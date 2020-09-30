@@ -56,13 +56,14 @@ inline uint8 ProbabilityToLogOddsInteger(const float probability) {
 // track of how many range data were inserted into it, and sets
 // 'insertion_finished' when the map no longer changes and is ready for loop
 // closing.
-// 每一个孤立的submap， 每个都有一个local pose， 并且记录所有的点云的信息
+// 每一个孤立的submap， 每个都有一个local pose， 仅跟踪记录具体有多少帧激光数据，同时记录是否插入标志位
 class Submap {
  public:
   Submap(const transform::Rigid3d& local_submap_pose)
       : local_pose_(local_submap_pose) {}
   virtual ~Submap() {}
 
+  // 仅是虚函数，真正实现需要看2d或3d代码 submap_2d.cc和submap_3d.cc
   virtual proto::Submap ToProto(bool include_grid_data) const = 0;
   virtual void UpdateFromProto(const proto::Submap& proto) = 0;
 
@@ -88,7 +89,7 @@ class Submap {
   }
 
  private:
-  //仅三个变量，submap的位置， 激光帧个数， 是否插入标志位
+  //仅三个变量，submap的位置， 激光帧个数， 插入完成标志位
   const transform::Rigid3d local_pose_;
   int num_range_data_ = 0;
   bool insertion_finished_ = false;

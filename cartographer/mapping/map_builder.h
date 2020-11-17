@@ -41,6 +41,7 @@ class MapBuilder : public MapBuilderInterface {
   MapBuilder(const MapBuilder &) = delete;
   MapBuilder &operator=(const MapBuilder &) = delete;
 
+  // 开始开启一个新的submap 轨迹建图类
   int AddTrajectoryBuilder(
       const std::set<SensorId> &expected_sensor_ids,
       const proto::TrajectoryBuilderOptions &trajectory_options,
@@ -72,7 +73,7 @@ class MapBuilder : public MapBuilderInterface {
     return pose_graph_.get();
   }
 
-  // 重载调用trajectory_builders_
+  // 重载调用trajectory_builders_，当前轨迹线即submap的个数
   int num_trajectory_builders() const override {
     return trajectory_builders_.size();
   }
@@ -88,14 +89,15 @@ class MapBuilder : public MapBuilderInterface {
   }
 
  private:
-  const proto::MapBuilderOptions options_;
+  const proto::MapBuilderOptions options_;   // 配置信息
   common::ThreadPool thread_pool_;  // 线程
 
   std::unique_ptr<PoseGraph> pose_graph_;  // 用于闭环， 包括ID，位置， 约束， 即每个submap的相关信息，所有submap一起进行闭环
 
   std::unique_ptr<sensor::CollatorInterface> sensor_collator_; //Sensor 收集
   std::vector<std::unique_ptr<mapping::TrajectoryBuilderInterface>>
-      trajectory_builders_;                                    // trajectory build 序列， 每个序列可认为是维护了一个submap
+      trajectory_builders_;                                    // trajectory build 序列， 每个元素可认为是维护了一个submap
+                                                               // 即整个vector则维护了所有的submap
   std::vector<proto::TrajectoryBuilderOptionsWithSensorIds>
       all_trajectory_builder_options_;                         // 每个trajectory 对应的 配置信息
 };

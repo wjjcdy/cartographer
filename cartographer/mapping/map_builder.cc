@@ -95,6 +95,9 @@ proto::MapBuilderOptions CreateMapBuilderOptions(
 }
 
 // 构建函数
+// 包含两个全局类
+// pose_graph_: 用于闭环； 
+// trajectory_builders_: 用于local slam
 MapBuilder::MapBuilder(const proto::MapBuilderOptions& options)
     : options_(options), thread_pool_(options.num_background_threads()) {
   CHECK(options.use_trajectory_builder_2d() ^
@@ -123,6 +126,7 @@ MapBuilder::MapBuilder(const proto::MapBuilderOptions& options)
 
 
 // 增加轨迹节点方法，其主要作用是添加submap中的一帧信息，构建submap
+// 包括local slam即submap的维护， 和 回环pose的存储
 int MapBuilder::AddTrajectoryBuilder(
     const std::set<SensorId>& expected_sensor_ids,
     const proto::TrajectoryBuilderOptions& trajectory_options,

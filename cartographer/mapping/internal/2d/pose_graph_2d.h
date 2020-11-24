@@ -61,8 +61,12 @@ namespace mapping {
 // Each node has been matched against one or more submaps (adding a constraint
 // for each match), both poses of nodes and of submaps are to be optimized.
 // All constraints are between a submap i and a node j.
+/*
+每个scan节点可以和一个或多个submap进行匹配，对应node 和submap则为一个约束。则scan和submap的pose都会被优化
+ */
 class PoseGraph2D : public PoseGraph {
  public:
+ // 构建函数
   PoseGraph2D(
       const proto::PoseGraphOptions& options,
       std::unique_ptr<optimization::OptimizationProblem2D> optimization_problem,
@@ -77,6 +81,9 @@ class PoseGraph2D : public PoseGraph {
   // node data was inserted into the 'insertion_submaps'. If
   // 'insertion_submaps.front().finished()' is 'true', data was inserted into
   // this submap for the last time.
+  /*
+    插入一个graph节点，采用constant_data:轨迹节点，其中local pose为匹配后的位置
+   */
   NodeId AddNode(
       std::shared_ptr<const TrajectoryNode::Data> constant_data,
       int trajectory_id,
@@ -238,35 +245,35 @@ class PoseGraph2D : public PoseGraph {
   void UpdateTrajectoryConnectivity(const Constraint& constraint)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  const proto::PoseGraphOptions options_;
-  GlobalSlamOptimizationCallback global_slam_optimization_callback_;
-  mutable absl::Mutex mutex_;
-  absl::Mutex work_queue_mutex_;
+  const proto::PoseGraphOptions options_;                             // 配置信息
+  GlobalSlamOptimizationCallback global_slam_optimization_callback_;  // 回调，传出优化结果
+  mutable absl::Mutex mutex_;                                         // 锁
+  absl::Mutex work_queue_mutex_;                                      // 处理缓存数据锁
 
   // If it exists, further work items must be added to this queue, and will be
   // considered later.
-  std::unique_ptr<WorkQueue> work_queue_ GUARDED_BY(work_queue_mutex_);
+  std::unique_ptr<WorkQueue> work_queue_ GUARDED_BY(work_queue_mutex_); // 相当于一个缓存buffer，将要处理的数据缓存
 
   // We globally localize a fraction of the nodes from each trajectory.
   absl::flat_hash_map<int, std::unique_ptr<common::FixedRatioSampler>>
       global_localization_samplers_ GUARDED_BY(mutex_);
 
   // Number of nodes added since last loop closure.
-  int num_nodes_since_last_loop_closure_ GUARDED_BY(mutex_) = 0;
+  int num_nodes_since_last_loop_closure_ GUARDED_BY(mutex_) = 0;        // 自从上次闭环处理后增加的node的个数
 
   // Current optimization problem.
-  std::unique_ptr<optimization::OptimizationProblem2D> optimization_problem_;
-  constraints::ConstraintBuilder2D constraint_builder_;
+  std::unique_ptr<optimization::OptimizationProblem2D> optimization_problem_; // 优化器
+  constraints::ConstraintBuilder2D constraint_builder_;                       // 约束构造器
 
   // Thread pool used for handling the work queue.
-  common::ThreadPool* const thread_pool_;
+  common::ThreadPool* const thread_pool_;                                     // 线程池，可处理work queue
 
   // List of all trimmers to consult when optimizations finish.
   std::vector<std::unique_ptr<PoseGraphTrimmer>> trimmers_ GUARDED_BY(mutex_);
 
-  PoseGraphData data_ GUARDED_BY(mutex_);
+  PoseGraphData data_ GUARDED_BY(mutex_);                                     // PoseGraphData全局数据
 
-  ValueConversionTables conversion_tables_;
+  ValueConversionTables conversion_tables_;                                   // value变换查询表
 
   // Allows querying and manipulating the pose graph by the 'trimmers_'. The
   // 'mutex_' of the pose graph is held while this class is used.

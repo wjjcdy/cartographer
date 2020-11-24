@@ -49,6 +49,12 @@ static auto* kActiveSubmapsMetric = metrics::Gauge::Null();
 static auto* kFrozenSubmapsMetric = metrics::Gauge::Null();
 static auto* kDeletedSubmapsMetric = metrics::Gauge::Null();
 
+// 构造函数
+/*
+配置
+优化器
+线程池
+ */
 PoseGraph2D::PoseGraph2D(
     const proto::PoseGraphOptions& options,
     std::unique_ptr<optimization::OptimizationProblem2D> optimization_problem,
@@ -57,6 +63,7 @@ PoseGraph2D::PoseGraph2D(
       optimization_problem_(std::move(optimization_problem)),
       constraint_builder_(options_.constraint_builder_options(), thread_pool),
       thread_pool_(thread_pool) {
+        // 默认没有
   if (options.has_overlapping_submaps_trimmer_2d()) {
     const auto& trimmer_options = options.overlapping_submaps_trimmer_2d();
     AddTrimmer(absl::make_unique<OverlappingSubmapsTrimmer2D>(
@@ -66,26 +73,40 @@ PoseGraph2D::PoseGraph2D(
   }
 }
 
+// 析构函数
 PoseGraph2D::~PoseGraph2D() {
-  WaitForAllComputations();
+  WaitForAllComputations();                     // 等待所有计算结束
   absl::MutexLock locker(&work_queue_mutex_);
   CHECK(work_queue_ == nullptr);
 }
 
+// 初始化正在维护的submap为一个submap id
+/*
+根据优化器里存储的submap id和正在维护的submap进行判断，如果一个都没有，则创建一个0 index的submap
+如果上个submapid为正在维护的front， 则返回上一个和新增加的submap id
+如果上个submapid为正在维护的back，说明都已经处理过了，则返回上上个和上个的submap id 
+*/
 std::vector<SubmapId> PoseGraph2D::InitializeGlobalSubmapPoses(
     const int trajectory_id, const common::Time time,
     const std::vector<std::shared_ptr<const Submap2D>>& insertion_submaps) {
   CHECK(!insertion_submaps.empty());
+  // 获取优化器中的submap地址
   const auto& submap_data = optimization_problem_->submap_data();
+  // 表明为第一个submap
   if (insertion_submaps.size() == 1) {
     // If we don't already have an entry for the first submap, add one.
+    // 如果optimization_problem_的submap data中还没有存储任何id，则添加一个新的
+    // 获取存储的submap id的个数
     if (submap_data.SizeOfTrajectoryOrZero(trajectory_id) == 0) {
+      // trajectory_id初始位置的个数如果大于0，即存在初始位置
       if (data_.initial_trajectory_poses.count(trajectory_id) > 0) {
+        // 创建两个trajectory_id的链接， 即有相对位置的trajectory id
         data_.trajectory_connectivity_state.Connect(
             trajectory_id,
             data_.initial_trajectory_poses.at(trajectory_id).to_trajectory_id,
             time);
       }
+      // 添加submap的全局位置
       optimization_problem_->AddSubmap(
           trajectory_id, transform::Project2D(
                              ComputeLocalToGlobalTransform(
@@ -93,77 +114,120 @@ std::vector<SubmapId> PoseGraph2D::InitializeGlobalSubmapPoses(
                              insertion_submaps[0]->local_pose()));
     }
     CHECK_EQ(1, submap_data.SizeOfTrajectoryOrZero(trajectory_id));
+    // submapid 为0 添加到集合中
     const SubmapId submap_id{trajectory_id, 0};
     CHECK(data_.submap_data.at(submap_id).submap == insertion_submaps.front());
     return {submap_id};
   }
   CHECK_EQ(2, insertion_submaps.size());
+  // 获取trajectory_id的最后一个submap id
   const auto end_it = submap_data.EndOfTrajectory(trajectory_id);
+  // 检测是否为空（理论上不为空，因为上面为空时，已经初始化添加了一个）
   CHECK(submap_data.BeginOfTrajectory(trajectory_id) != end_it);
+  // 取出前一个submap id
   const SubmapId last_submap_id = std::prev(end_it)->id;
+
+  //如果submap data中上一个id为正在维护的submap中的front，说明back为新的还未处理
   if (data_.submap_data.at(last_submap_id).submap ==
       insertion_submaps.front()) {
     // In this case, 'last_submap_id' is the ID of
     // 'insertions_submaps.front()' and 'insertions_submaps.back()' is new.
+    // 获取上个submap ID的全局位置
     const auto& first_submap_pose = submap_data.at(last_submap_id).global_pose;
+    // 根据上一个submap推出相邻的下一个submap的全局位置
     optimization_problem_->AddSubmap(
         trajectory_id,
         first_submap_pose *
             constraints::ComputeSubmapPose(*insertion_submaps[0]).inverse() *
             constraints::ComputeSubmapPose(*insertion_submaps[1]));
+    // 返回上一个和当前新的submap id集合
+    // 新的id为上个id+1
     return {last_submap_id,
             SubmapId{trajectory_id, last_submap_id.submap_index + 1}};
   }
+  // 表明存储的上一个submapid 为 正在维护的back submap， 则说明已经处理过
   CHECK(data_.submap_data.at(last_submap_id).submap ==
         insertion_submaps.back());
+  // 获取上上个submapid
   const SubmapId front_submap_id{trajectory_id,
                                  last_submap_id.submap_index - 1};
   CHECK(data_.submap_data.at(front_submap_id).submap ==
         insertion_submaps.front());
+  // 返回前前和前一个的submap
   return {front_submap_id, last_submap_id};
 }
 
+// posegraph 添加一个节点
+/*
+input:
+此次match后的处理后的点云数据，包括水平投影的点云，重力方向和在local submap的位置
+trajectory id
+匹配采用的submap 地图
+此次scan 的全局pose
+ */
 NodeId PoseGraph2D::AppendNode(
     std::shared_ptr<const TrajectoryNode::Data> constant_data,
     const int trajectory_id,
     const std::vector<std::shared_ptr<const Submap2D>>& insertion_submaps,
     const transform::Rigid3d& optimized_pose) {
   absl::MutexLock locker(&mutex_);
+  // 判断是否需要添加trajectory id
   AddTrajectoryIfNeeded(trajectory_id);
+  // 此 trajectory id的轨迹是否存在或更改，暂时只是判断无用
   if (!CanAddWorkItemModifying(trajectory_id)) {
     LOG(WARNING) << "AddNode was called for finished or deleted trajectory.";
   }
+  // 添加一个scan id， 返回trajectoryid和对应的scan idex
   const NodeId node_id = data_.trajectory_nodes.Append(
       trajectory_id, TrajectoryNode{constant_data, optimized_pose});
+  // 记录轨迹节点个数
   ++data_.num_trajectory_nodes;
   // Test if the 'insertion_submap.back()' is one we never saw before.
+  // 只有正在维护的两个submap都存在时，并且第二submap第一次出现
   if (data_.submap_data.SizeOfTrajectoryOrZero(trajectory_id) == 0 ||
       std::prev(data_.submap_data.EndOfTrajectory(trajectory_id))
               ->data.submap != insertion_submaps.back()) {
     // We grow 'data_.submap_data' as needed. This code assumes that the first
     // time we see a new submap is as 'insertion_submaps.back()'.
+    // 添加submap id，
     const SubmapId submap_id =
         data_.submap_data.Append(trajectory_id, InternalSubmapData());
+    // 闭环中submap节点采用维护的两个中后一个submap
     data_.submap_data.at(submap_id).submap = insertion_submaps.back();
     LOG(INFO) << "Inserted submap " << submap_id << ".";
+    // 被处理的submap个数自加
     kActiveSubmapsMetric->Increment();
   }
   return node_id;
 }
 
+
+// 在全局SLAM中，每帧点云经过local slam匹配后，获取较为准确的scan pose即对应的submap后，调用
+/*
+input:
+此次match后的处理后的点云数据，包括水平投影的点云，重力方向和在local submap的位置
+trajectory id
+匹配采用的submap 地图
+ */
 NodeId PoseGraph2D::AddNode(
     std::shared_ptr<const TrajectoryNode::Data> constant_data,
     const int trajectory_id,
     const std::vector<std::shared_ptr<const Submap2D>>& insertion_submaps) {
+  // 将点云的原点坐标的local的位置转换为全局位置
   const transform::Rigid3d optimized_pose(
       GetLocalToGlobalTransform(trajectory_id) * constant_data->local_pose);
 
+  // 添加一个节点
   const NodeId node_id = AppendNode(constant_data, trajectory_id,
                                     insertion_submaps, optimized_pose);
   // We have to check this here, because it might have changed by the time we
   // execute the lambda.
+  // 查看维护的两个submap的front是否插入完成（两个submap，front用于匹配和更新的）
+  // 如果一个submap finished，则需要进行闭环检测
   const bool newly_finished_submap =
       insertion_submaps.front()->insertion_finished();
+
+  // 把计算约束的工作较为workitem完成，是个多线程工作组
   AddWorkItem([=]() LOCKS_EXCLUDED(mutex_) {
     return ComputeConstraintsForNode(node_id, insertion_submaps,
                                      newly_finished_submap);
@@ -171,15 +235,18 @@ NodeId PoseGraph2D::AddNode(
   return node_id;
 }
 
+// 将一个函数地址加入到一个工作队列中
 void PoseGraph2D::AddWorkItem(
     const std::function<WorkItem::Result()>& work_item) {
   absl::MutexLock locker(&work_queue_mutex_);
+  // 如果工作队列是空的，则可直接运行
   if (work_queue_ == nullptr) {
     work_queue_ = absl::make_unique<WorkQueue>();
     auto task = absl::make_unique<common::Task>();
     task->SetWorkItem([this]() { DrainWorkQueue(); });
     thread_pool_->Schedule(std::move(task));
   }
+  // 否则插入到工作队列中，等待执行
   const auto now = std::chrono::steady_clock::now();
   work_queue_->push_back({now, work_item});
   kWorkQueueSizeMetric->Set(work_queue_->size());
@@ -189,6 +256,7 @@ void PoseGraph2D::AddWorkItem(
           .count());
 }
 
+// 是否需要将trajectory_id， 暂时没看懂具体意义？？？？？
 void PoseGraph2D::AddTrajectoryIfNeeded(const int trajectory_id) {
   data_.trajectories_state[trajectory_id];
   CHECK(data_.trajectories_state.at(trajectory_id).state !=
@@ -197,8 +265,10 @@ void PoseGraph2D::AddTrajectoryIfNeeded(const int trajectory_id) {
         TrajectoryState::DELETED);
   CHECK(data_.trajectories_state.at(trajectory_id).deletion_state ==
         InternalTrajectoryState::DeletionState::NORMAL);
+  // 在整个闭环轨迹链接数据中添加trajectory id信息
   data_.trajectory_connectivity_state.Add(trajectory_id);
   // Make sure we have a sampler for this trajectory.
+  // 全局定位采样器要存在，默认为0.003秒，采样一次
   if (!global_localization_samplers_[trajectory_id]) {
     global_localization_samplers_[trajectory_id] =
         absl::make_unique<common::FixedRatioSampler>(
@@ -206,6 +276,7 @@ void PoseGraph2D::AddTrajectoryIfNeeded(const int trajectory_id) {
   }
 }
 
+//也可考虑imu
 void PoseGraph2D::AddImuData(const int trajectory_id,
                              const sensor::ImuData& imu_data) {
   AddWorkItem([=]() LOCKS_EXCLUDED(mutex_) {
@@ -216,7 +287,7 @@ void PoseGraph2D::AddImuData(const int trajectory_id,
     return WorkItem::Result::kDoNotRunOptimization;
   });
 }
-
+//也可考虑odometry、
 void PoseGraph2D::AddOdometryData(const int trajectory_id,
                                   const sensor::OdometryData& odometry_data) {
   AddWorkItem([=]() LOCKS_EXCLUDED(mutex_) {
@@ -241,6 +312,7 @@ void PoseGraph2D::AddFixedFramePoseData(
   });
 }
 
+//暂时没用
 void PoseGraph2D::AddLandmarkData(int trajectory_id,
                                   const sensor::LandmarkData& landmark_data) {
   AddWorkItem([=]() LOCKS_EXCLUDED(mutex_) {
@@ -258,25 +330,34 @@ void PoseGraph2D::AddLandmarkData(int trajectory_id,
   });
 }
 
+// 计算指定的nodeid和submapid计算其约束
 void PoseGraph2D::ComputeConstraint(const NodeId& node_id,
                                     const SubmapId& submap_id) {
-  bool maybe_add_local_constraint = false;
-  bool maybe_add_global_constraint = false;
+  bool maybe_add_local_constraint = false;         // 声明默认不添加局部约束条件
+  bool maybe_add_global_constraint = false;        // 声明默认不添加全局约束条件
   const TrajectoryNode::Data* constant_data;
   const Submap2D* submap;
   {
     absl::MutexLock locker(&mutex_);
+    // 判断指定的submapid是否为finished状态，理论上不是不应该计算
     CHECK(data_.submap_data.at(submap_id).state == SubmapState::kFinished);
+    // submap如果未插入完成，无需计算
     if (!data_.submap_data.at(submap_id).submap->insertion_finished()) {
       // Uplink server only receives grids when they are finished, so skip
       // constraint search before that.
       return;
     }
 
+    // 获取两个id最新的那个时刻
     const common::Time node_time = GetLatestNodeTime(node_id, submap_id);
+    // 最近轨迹链接的时间
     const common::Time last_connection_time =
         data_.trajectory_connectivity_state.LastConnectionTime(
             node_id.trajectory_id, submap_id.trajectory_id);
+
+    // 如果nodeid和submapid在同一个轨迹中，或者更新节点的时间小于全局约束间隔时间
+    // 简单说局部位置是较为可靠的，可添加为局部约束
+    // 并且在同一scanid所在的轨迹与submap所在的轨迹为同一条，则进入局部约束
     if (node_id.trajectory_id == submap_id.trajectory_id ||
         node_time <
             last_connection_time +
@@ -286,29 +367,42 @@ void PoseGraph2D::ComputeConstraint(const NodeId& node_id,
       // has been a recent global constraint that ties that node's trajectory to
       // the submap's trajectory, it suffices to do a match constrained to a
       // local search window.
+      // 一条轨迹全局采样一定时间间隔时，可添加全局约束
       maybe_add_local_constraint = true;
     } else if (global_localization_samplers_[node_id.trajectory_id]->Pulse()) {
       maybe_add_global_constraint = true;
     }
+    // 获取node id的相关data
     constant_data = data_.trajectory_nodes.at(node_id).constant_data.get();
+    // 获取submapid的相关data
     submap = static_cast<const Submap2D*>(
         data_.submap_data.at(submap_id).submap.get());
   }
 
   if (maybe_add_local_constraint) {
+    // 获取相对位置
     const transform::Rigid2d initial_relative_pose =
         optimization_problem_->submap_data()
             .at(submap_id)
             .global_pose.inverse() *
         optimization_problem_->node_data().at(node_id).global_pose_2d;
+    // 添加约束，添加约束即是进行闭环匹配，更新约束内容，即相对位置
     constraint_builder_.MaybeAddConstraint(
         submap_id, submap, node_id, constant_data, initial_relative_pose);
   } else if (maybe_add_global_constraint) {
+    // 添加全局约束
     constraint_builder_.MaybeAddGlobalConstraint(submap_id, submap, node_id,
                                                  constant_data);
   }
 }
 
+// 计算scan的node和submap的相对关系
+/*
+input:
+nodeid
+submap
+submap是否finished 标志
+ */
 WorkItem::Result PoseGraph2D::ComputeConstraintsForNode(
     const NodeId& node_id,
     std::vector<std::shared_ptr<const Submap2D>> insertion_submaps,
@@ -318,35 +412,47 @@ WorkItem::Result PoseGraph2D::ComputeConstraintsForNode(
   std::set<NodeId> newly_finished_submap_node_ids;
   {
     absl::MutexLock locker(&mutex_);
+    // 获取该nodeid的点云数据和位置信息
     const auto& constant_data =
         data_.trajectory_nodes.at(node_id).constant_data;
+    // 获取submap对应的submapid vector
+    // 如果第一个则为index 为0， 否则会返回最新的两个连续的submap id   
     submap_ids = InitializeGlobalSubmapPoses(
         node_id.trajectory_id, constant_data->time, insertion_submaps);
+
     CHECK_EQ(submap_ids.size(), insertion_submaps.size());
+    //front的submap 为match 的submap
     const SubmapId matching_id = submap_ids.front();
+    //获取scan 的在submap的local pose
     const transform::Rigid2d local_pose_2d =
         transform::Project2D(constant_data->local_pose *
                              transform::Rigid3d::Rotation(
                                  constant_data->gravity_alignment.inverse()));
+    // 获取全局绝对位置，通过优化后的submap 全局位置和submap的local位置求出转移矩阵
     const transform::Rigid2d global_pose_2d =
         optimization_problem_->submap_data().at(matching_id).global_pose *
         constraints::ComputeSubmapPose(*insertion_submaps.front()).inverse() *
         local_pose_2d;
+    // 优化器中增加轨迹节点信息
     optimization_problem_->AddTrajectoryNode(
         matching_id.trajectory_id,
         optimization::NodeSpec2D{constant_data->time, local_pose_2d,
                                  global_pose_2d,
                                  constant_data->gravity_alignment});
+    // 遍历正在维护的两个submap
     for (size_t i = 0; i < insertion_submaps.size(); ++i) {
       const SubmapId submap_id = submap_ids[i];
       // Even if this was the last node added to 'submap_id', the submap will
       // only be marked as finished in 'data_.submap_data' further below.
       CHECK(data_.submap_data.at(submap_id).state ==
             SubmapState::kNoConstraintSearch);
+      // submap_id中的对应的添加nodeid
       data_.submap_data.at(submap_id).node_ids.emplace(node_id);
+      //nodeid的scan pose在submap的相对位置 
       const transform::Rigid2d constraint_transform =
           constraints::ComputeSubmapPose(*insertion_submaps[i]).inverse() *
           local_pose_2d;
+      // 增加一个约束条件，为submap插入的scan id， submapid和nodeid ，约束为相对位置
       data_.constraints.push_back(
           Constraint{submap_id,
                      node_id,
@@ -361,29 +467,35 @@ WorkItem::Result PoseGraph2D::ComputeConstraintsForNode(
     // TODO(danielsievers): Add a member variable and avoid having to copy
     // them out here.
     for (const auto& submap_id_data : data_.submap_data) {
+      // 判断当前graph中所有的finished状态并存储
       if (submap_id_data.data.state == SubmapState::kFinished) {
         CHECK_EQ(submap_id_data.data.node_ids.count(node_id), 0);
         finished_submap_ids.emplace_back(submap_id_data.id);
       }
     }
+    // 如果当前为新finished的
     if (newly_finished_submap) {
       const SubmapId newly_finished_submap_id = submap_ids.front();
       InternalSubmapData& finished_submap_data =
           data_.submap_data.at(newly_finished_submap_id);
       CHECK(finished_submap_data.state == SubmapState::kNoConstraintSearch);
+      // 将新的submap设置为finished，表明已经增加约束条件了
       finished_submap_data.state = SubmapState::kFinished;
       newly_finished_submap_node_ids = finished_submap_data.node_ids;
     }
   }
 
+  // 计算scan的nodeid 与所有存储闭环的submapid全部计算下约束
   for (const auto& submap_id : finished_submap_ids) {
     ComputeConstraint(node_id, submap_id);
   }
 
+  // 存在新的finished的submap
   if (newly_finished_submap) {
     const SubmapId newly_finished_submap_id = submap_ids.front();
     // We have a new completed submap, so we look into adding constraints for
     // old nodes.
+    // 当出现一个新的submap完成时，需要将graph存储的所有节点与当前submap进行计算约束
     for (const auto& node_id_data : optimization_problem_->node_data()) {
       const NodeId& node_id = node_id_data.id;
       if (newly_finished_submap_node_ids.count(node_id) == 0) {
@@ -391,9 +503,12 @@ WorkItem::Result PoseGraph2D::ComputeConstraintsForNode(
       }
     }
   }
+  // 此次创建约束结束
   constraint_builder_.NotifyEndOfNode();
   absl::MutexLock locker(&mutex_);
+  // 记录距离上次闭环处理增加的节点个数
   ++num_nodes_since_last_loop_closure_;
+  // 当新增加节点个数达到一定时，则调用优化处理结果
   if (options_.optimize_every_n_nodes() > 0 &&
       num_nodes_since_last_loop_closure_ > options_.optimize_every_n_nodes()) {
     return WorkItem::Result::kRunOptimization;
@@ -401,9 +516,12 @@ WorkItem::Result PoseGraph2D::ComputeConstraintsForNode(
   return WorkItem::Result::kDoNotRunOptimization;
 }
 
+//获取node_id和submap_id存储时最新的时刻
 common::Time PoseGraph2D::GetLatestNodeTime(const NodeId& node_id,
                                             const SubmapId& submap_id) const {
+  // node ID 在轨迹的时刻
   common::Time time = data_.trajectory_nodes.at(node_id).constant_data->time;
+  // submapid的submap数据
   const InternalSubmapData& submap_data = data_.submap_data.at(submap_id);
   if (!submap_data.node_ids.empty()) {
     const NodeId last_submap_node_id =
@@ -415,17 +533,23 @@ common::Time PoseGraph2D::GetLatestNodeTime(const NodeId& node_id,
   return time;
 }
 
+//增加约束时更新轨迹连接关系
 void PoseGraph2D::UpdateTrajectoryConnectivity(const Constraint& constraint) {
+  // 约束是nodeID不是submap中的插入的scan
   CHECK_EQ(constraint.tag, Constraint::INTER_SUBMAP);
+  // 获取最新时间
   const common::Time time =
       GetLatestNodeTime(constraint.node_id, constraint.submap_id);
+  // 增加相邻关系
   data_.trajectory_connectivity_state.Connect(
       constraint.node_id.trajectory_id, constraint.submap_id.trajectory_id,
       time);
 }
 
+//删除需要删除的轨迹
 void PoseGraph2D::DeleteTrajectoriesIfNeeded() {
   TrimmingHandle trimming_handle(this);
+  // 遍历所有轨迹状态
   for (auto& it : data_.trajectories_state) {
     if (it.second.deletion_state ==
         InternalTrajectoryState::DeletionState::WAIT_FOR_DELETION) {
@@ -441,15 +565,19 @@ void PoseGraph2D::DeleteTrajectoriesIfNeeded() {
   }
 }
 
+//处理已经添加约束的结果
 void PoseGraph2D::HandleWorkQueue(
     const constraints::ConstraintBuilder2D::Result& result) {
+      // 将新的约束添加到全局约束队列中
   {
     absl::MutexLock locker(&mutex_);
     data_.constraints.insert(data_.constraints.end(), result.begin(),
                              result.end());
   }
+  // 进行全局优化
   RunOptimization();
 
+  //如果设置了全局优化回调函数，则进行调用
   if (global_slam_optimization_callback_) {
     std::map<int, NodeId> trajectory_id_to_last_optimized_node_id;
     std::map<int, SubmapId> trajectory_id_to_last_optimized_submap_id;
@@ -457,11 +585,13 @@ void PoseGraph2D::HandleWorkQueue(
       absl::MutexLock locker(&mutex_);
       const auto& submap_data = optimization_problem_->submap_data();
       const auto& node_data = optimization_problem_->node_data();
+      //遍历每条轨迹
       for (const int trajectory_id : node_data.trajectory_ids()) {
         if (node_data.SizeOfTrajectoryOrZero(trajectory_id) == 0 ||
             submap_data.SizeOfTrajectoryOrZero(trajectory_id) == 0) {
           continue;
         }
+        //仅将每条轨迹的最新节点进行存储
         trajectory_id_to_last_optimized_node_id.emplace(
             trajectory_id,
             std::prev(node_data.EndOfTrajectory(trajectory_id))->id);
@@ -470,16 +600,19 @@ void PoseGraph2D::HandleWorkQueue(
             std::prev(submap_data.EndOfTrajectory(trajectory_id))->id);
       }
     }
+    //回调函数传输出去最近优化的submapid和nodeid
     global_slam_optimization_callback_(
         trajectory_id_to_last_optimized_submap_id,
         trajectory_id_to_last_optimized_node_id);
   }
 
   {
+    // 根据约束结果，更新轨迹间的链接关系
     absl::MutexLock locker(&mutex_);
     for (const Constraint& constraint : result) {
       UpdateTrajectoryConnectivity(constraint);
     }
+    //删除需要删除的轨迹
     DeleteTrajectoriesIfNeeded();
     TrimmingHandle trimming_handle(this);
     for (auto& trimmer : trimmers_) {
@@ -491,17 +624,22 @@ void PoseGraph2D::HandleWorkQueue(
                          return trimmer->IsFinished();
                        }),
         trimmers_.end());
-
+    
+    //闭环后累计节点进行清零
+    //表明已经完成了一次闭环
     num_nodes_since_last_loop_closure_ = 0;
 
     // Update the gauges that count the current number of constraints.
-    double inter_constraints_same_trajectory = 0;
-    double inter_constraints_different_trajectory = 0;
+    double inter_constraints_same_trajectory = 0;      // 同一轨迹中约束的个数
+    double inter_constraints_different_trajectory = 0; // 不同轨迹中约束的个数
+    // 遍历所有约束
     for (const auto& constraint : data_.constraints) {
+      // submap插入的nodeid无需判断
       if (constraint.tag ==
           cartographer::mapping::PoseGraph::Constraint::INTRA_SUBMAP) {
         continue;
       }
+      // 分别统计个数
       if (constraint.node_id.trajectory_id ==
           constraint.submap_id.trajectory_id) {
         ++inter_constraints_same_trajectory;
@@ -513,10 +651,11 @@ void PoseGraph2D::HandleWorkQueue(
     kConstraintsDifferentTrajectoryMetric->Set(
         inter_constraints_different_trajectory);
   }
-
+  // 清空整个工作队列，即等待工作队列完成
   DrainWorkQueue();
 }
 
+// 等待任务队列中所有任务完成
 void PoseGraph2D::DrainWorkQueue() {
   bool process_work_queue = true;
   size_t work_queue_size;
@@ -524,38 +663,46 @@ void PoseGraph2D::DrainWorkQueue() {
     std::function<WorkItem::Result()> work_item;
     {
       absl::MutexLock locker(&work_queue_mutex_);
+      // 工作队列已空，则可直接退出
       if (work_queue_->empty()) {
         work_queue_.reset();
         return;
       }
+      // 获取队列中最前的任务
       work_item = work_queue_->front().task;
       work_queue_->pop_front();
       work_queue_size = work_queue_->size();
       kWorkQueueSizeMetric->Set(work_queue_size);
     }
+    // 当前工作任务的状态
     process_work_queue = work_item() == WorkItem::Result::kDoNotRunOptimization;
   }
   LOG(INFO) << "Remaining work items in queue: " << work_queue_size;
   // We have to optimize again.
+  // 继续执行优化
   constraint_builder_.WhenDone(
       [this](const constraints::ConstraintBuilder2D::Result& result) {
         HandleWorkQueue(result);
       });
 }
 
+// 等待所有约束条件计算完成
 void PoseGraph2D::WaitForAllComputations() {
+  // 获取轨迹总节点个数
   int num_trajectory_nodes;
   {
     absl::MutexLock locker(&mutex_);
     num_trajectory_nodes = data_.num_trajectory_nodes;
   }
-
+  // 获取完成的节点个数
   const int num_finished_nodes_at_start =
       constraint_builder_.GetNumFinishedNodes();
 
+  // 打印临时函数
   auto report_progress = [this, num_trajectory_nodes,
                           num_finished_nodes_at_start]() {
     // Log progress on nodes only when we are actually processing nodes.
+    // 如果不相等，显示完成百分比
     if (num_trajectory_nodes != num_finished_nodes_at_start) {
       std::ostringstream progress_info;
       progress_info << "Optimizing: " << std::fixed << std::setprecision(1)
@@ -570,6 +717,7 @@ void PoseGraph2D::WaitForAllComputations() {
 
   // First wait for the work queue to drain so that it's safe to schedule
   // a WhenDone() callback.
+  // 等待work queue 清空，
   {
     const auto predicate = [this]()
                                EXCLUSIVE_LOCKS_REQUIRED(work_queue_mutex_) {
@@ -606,6 +754,8 @@ void PoseGraph2D::WaitForAllComputations() {
   std::cout << "\r\x1b[KOptimizing: Done.     " << std::endl;
 }
 
+//删除指定id的trajectory
+// 实际上是对制定id的state标志为将要删除
 void PoseGraph2D::DeleteTrajectory(const int trajectory_id) {
   {
     absl::MutexLock locker(&mutex_);
@@ -618,6 +768,7 @@ void PoseGraph2D::DeleteTrajectory(const int trajectory_id) {
     it->second.deletion_state =
         InternalTrajectoryState::DeletionState::SCHEDULED_FOR_DELETION;
   }
+  // 添加到工作队列中，返回未执行优化
   AddWorkItem([this, trajectory_id]() LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock locker(&mutex_);
     CHECK(data_.trajectories_state.at(trajectory_id).state !=
@@ -632,12 +783,14 @@ void PoseGraph2D::DeleteTrajectory(const int trajectory_id) {
   });
 }
 
+// 完成此条轨迹
 void PoseGraph2D::FinishTrajectory(const int trajectory_id) {
   AddWorkItem([this, trajectory_id]() LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock locker(&mutex_);
     CHECK(!IsTrajectoryFinished(trajectory_id));
     data_.trajectories_state[trajectory_id].state = TrajectoryState::FINISHED;
 
+    // 将此轨迹中每个submap状态均改成完成
     for (const auto& submap : data_.submap_data.trajectory(trajectory_id)) {
       data_.submap_data.at(submap.id).state = SubmapState::kFinished;
     }
@@ -645,6 +798,7 @@ void PoseGraph2D::FinishTrajectory(const int trajectory_id) {
   });
 }
 
+// 判断此条轨迹是否完成
 bool PoseGraph2D::IsTrajectoryFinished(const int trajectory_id) const {
   return data_.trajectories_state.count(trajectory_id) != 0 &&
          data_.trajectories_state.at(trajectory_id).state ==
@@ -728,6 +882,7 @@ void PoseGraph2D::AddSubmapFromProto(
       });
 }
 
+// 解析addnode
 void PoseGraph2D::AddNodeFromProto(const transform::Rigid3d& global_pose,
                                    const proto::Node& node) {
   const NodeId node_id = {node.node_id().trajectory_id(),
@@ -855,10 +1010,13 @@ void PoseGraph2D::RunFinalOptimization() {
       return WorkItem::Result::kDoNotRunOptimization;
     });
   }
+  //等待所有约束条件
   WaitForAllComputations();
 }
 
+// 进行优化处理，并将优化结果进行更新
 void PoseGraph2D::RunOptimization() {
+  // 如果submap为空直接退出
   if (optimization_problem_->submap_data().empty()) {
     return;
   }
@@ -867,13 +1025,17 @@ void PoseGraph2D::RunOptimization() {
   // data_.constraints, data_.frozen_trajectories and data_.landmark_nodes
   // when executing the Solve. Solve is time consuming, so not taking the mutex
   // before Solve to avoid blocking foreground processing.
+  // 调用优化，由于耗时间，故没加锁，防止阻塞其他线程
   optimization_problem_->Solve(data_.constraints, GetTrajectoryStates(),
                                data_.landmark_nodes);
   absl::MutexLock locker(&mutex_);
 
+  //获取优化后的结果
   const auto& submap_data = optimization_problem_->submap_data();
   const auto& node_data = optimization_problem_->node_data();
+  // 
   for (const int trajectory_id : node_data.trajectory_ids()) {
+    // 更新所有节点的全局位置
     for (const auto& node : node_data.trajectory(trajectory_id)) {
       auto& mutable_trajectory_node = data_.trajectory_nodes.at(node.id);
       mutable_trajectory_node.global_pose =
@@ -884,17 +1046,21 @@ void PoseGraph2D::RunOptimization() {
 
     // Extrapolate all point cloud poses that were not included in the
     // 'optimization_problem_' yet.
+    // 获取submap的local到global的转移矩阵
     const auto local_to_new_global =
         ComputeLocalToGlobalTransform(submap_data, trajectory_id);
+    // 获取过去的转移矩阵
     const auto local_to_old_global = ComputeLocalToGlobalTransform(
         data_.global_submap_poses_2d, trajectory_id);
+    //获取old到新的转移矩阵
     const transform::Rigid3d old_global_to_new_global =
         local_to_new_global * local_to_old_global.inverse();
-
+    // 获取上次最后一个优化的节点
     const NodeId last_optimized_node_id =
         std::prev(node_data.EndOfTrajectory(trajectory_id))->id;
     auto node_it =
         std::next(data_.trajectory_nodes.find(last_optimized_node_id));
+    //将后续未优化的节点的全局pose进行转移（其转移矩阵是根据已优化的位置转移量） 
     for (; node_it != data_.trajectory_nodes.EndOfTrajectory(trajectory_id);
          ++node_it) {
       auto& mutable_trajectory_node = data_.trajectory_nodes.at(node_it->id);
@@ -902,17 +1068,23 @@ void PoseGraph2D::RunOptimization() {
           old_global_to_new_global * mutable_trajectory_node.global_pose;
     }
   }
+
   for (const auto& landmark : optimization_problem_->landmark_data()) {
     data_.landmark_nodes[landmark.first].global_landmark_pose = landmark.second;
   }
+  // 将优化后的submap进行替代原队列
   data_.global_submap_poses_2d = submap_data;
 }
 
+// 判断该id的是否可modify
 bool PoseGraph2D::CanAddWorkItemModifying(int trajectory_id) {
+  // 从轨迹状态中找到对应id的状态
   auto it = data_.trajectories_state.find(trajectory_id);
+  // 不存在
   if (it == data_.trajectories_state.end()) {
     return true;
   }
+  // 存在但是为finished
   if (it->second.state == TrajectoryState::FINISHED) {
     // TODO(gaschler): Replace all FATAL to WARNING after some testing.
     LOG(FATAL) << "trajectory_id " << trajectory_id
@@ -920,6 +1092,7 @@ bool PoseGraph2D::CanAddWorkItemModifying(int trajectory_id) {
                   "but modification is requested, skipping.";
     return false;
   }
+  // 将要被删除
   if (it->second.deletion_state !=
       InternalTrajectoryState::DeletionState::NORMAL) {
     LOG(FATAL) << "trajectory_id " << trajectory_id
@@ -927,6 +1100,7 @@ bool PoseGraph2D::CanAddWorkItemModifying(int trajectory_id) {
                   "but modification is requested, skipping.";
     return false;
   }
+  // 已经删除
   if (it->second.state == TrajectoryState::DELETED) {
     LOG(FATAL) << "trajectory_id " << trajectory_id
                << " has been deleted "
@@ -1038,11 +1212,13 @@ std::vector<PoseGraphInterface::Constraint> PoseGraph2D::constraints() const {
   return result;
 }
 
+// 为trajectory id设置初始位置
 void PoseGraph2D::SetInitialTrajectoryPose(const int from_trajectory_id,
                                            const int to_trajectory_id,
                                            const transform::Rigid3d& pose,
                                            const common::Time time) {
   absl::MutexLock locker(&mutex_);
+  // 为一个结构体，表示from_trajectory_id的pose到to_trajectory_id的pose的转换的相对pose
   data_.initial_trajectory_poses[from_trajectory_id] =
       InitialTrajectoryPose{to_trajectory_id, pose, time};
 }
@@ -1068,9 +1244,11 @@ transform::Rigid3d PoseGraph2D::GetInterpolatedGlobalTrajectoryPose(
       .transform;
 }
 
+// trajectory_id轨迹从local转换到global pose的转移矩阵
 transform::Rigid3d PoseGraph2D::GetLocalToGlobalTransform(
     const int trajectory_id) const {
   absl::MutexLock locker(&mutex_);
+  // 实际是submap的全局位置转换矩阵
   return ComputeLocalToGlobalTransform(data_.global_submap_poses_2d,
                                        trajectory_id);
 }
@@ -1086,12 +1264,14 @@ PoseGraphInterface::SubmapData PoseGraph2D::GetSubmapData(
   return GetSubmapDataUnderLock(submap_id);
 }
 
+//获取所有submap的map
 MapById<SubmapId, PoseGraphInterface::SubmapData>
 PoseGraph2D::GetAllSubmapData() const {
   absl::MutexLock locker(&mutex_);
   return GetSubmapDataUnderLock();
 }
 
+//获取所有submap的pose
 MapById<SubmapId, PoseGraphInterface::SubmapPose>
 PoseGraph2D::GetAllSubmapPoses() const {
   absl::MutexLock locker(&mutex_);
@@ -1106,9 +1286,11 @@ PoseGraph2D::GetAllSubmapPoses() const {
   return submap_poses;
 }
 
+// 计算trajectory_id轨迹中pose到全局位置的转移矩阵
 transform::Rigid3d PoseGraph2D::ComputeLocalToGlobalTransform(
     const MapById<SubmapId, optimization::SubmapSpec2D>& global_submap_poses,
     const int trajectory_id) const {
+  // 查找已经优化过的trajectory id中的submap的位置，如果有可返回存储的值
   auto begin_it = global_submap_poses.BeginOfTrajectory(trajectory_id);
   auto end_it = global_submap_poses.EndOfTrajectory(trajectory_id);
   if (begin_it == end_it) {
@@ -1116,11 +1298,12 @@ transform::Rigid3d PoseGraph2D::ComputeLocalToGlobalTransform(
     if (it != data_.initial_trajectory_poses.end()) {
       return GetInterpolatedGlobalTrajectoryPose(it->second.to_trajectory_id,
                                                  it->second.time) *
-             it->second.relative_pose;
+             it->second.relative_pose;           // 初始为单位矩阵，后续通过相对位置推导每个位置
     } else {
-      return transform::Rigid3d::Identity();
+      return transform::Rigid3d::Identity();     // 仅是唯一个，表明为初始submap，转移矩阵为单位矩阵
     }
   }
+  // 如果不存在，则返回由上个优化后的submapid的位置的相对位置换算出的位置
   const SubmapId last_optimized_submap_id = std::prev(end_it)->id;
   // Accessing 'local_pose' in Submap is okay, since the member is const.
   return transform::Embed3D(
@@ -1271,6 +1454,7 @@ void PoseGraph2D::TrimmingHandle::TrimSubmap(const SubmapId& submap_id) {
   }
 }
 
+// 获取在锁下的submapid 和submap数据
 MapById<SubmapId, PoseGraphInterface::SubmapData>
 PoseGraph2D::GetSubmapDataUnderLock() const {
   MapById<SubmapId, PoseGraphInterface::SubmapData> submaps;
@@ -1281,6 +1465,7 @@ PoseGraph2D::GetSubmapDataUnderLock() const {
   return submaps;
 }
 
+// 设置全局优化回调函数
 void PoseGraph2D::SetGlobalSlamOptimizationCallback(
     PoseGraphInterface::GlobalSlamOptimizationCallback callback) {
   global_slam_optimization_callback_ = callback;

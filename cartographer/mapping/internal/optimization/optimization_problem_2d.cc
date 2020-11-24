@@ -236,16 +236,22 @@ void OptimizationProblem2D::SetMaxNumIterations(
       max_num_iterations);
 }
 
+//input:
+/*
+位姿图的约束、运动轨迹、路标点
+ */
 void OptimizationProblem2D::Solve(
     const std::vector<Constraint>& constraints,
     const std::map<int, PoseGraphInterface::TrajectoryState>&
         trajectories_state,
     const std::map<std::string, LandmarkNode>& landmark_nodes) {
+  // 若无节点数据，则无需优化
   if (node_data_.empty()) {
     // Nothing to optimize.
     return;
   }
 
+  // 遍历记录下所有FROZEN状态的轨迹列表
   std::set<int> frozen_trajectories;
   for (const auto& it : trajectories_state) {
     if (it.second == PoseGraphInterface::TrajectoryState::FROZEN) {
@@ -253,21 +259,28 @@ void OptimizationProblem2D::Solve(
     }
   }
 
+  // 创建优化问题对象
   ceres::Problem::Options problem_options;
   ceres::Problem problem(problem_options);
 
   // Set the starting point.
   // TODO(hrapp): Move ceres data into SubmapSpec.
+  // 优化用的临时变量
   MapById<SubmapId, std::array<double, 3>> C_submaps;
   MapById<NodeId, std::array<double, 3>> C_nodes;
   std::map<std::string, CeresPose> C_landmarks;
+  //submap中第一个submap设置为固定的。
   bool first_submap = true;
   for (const auto& submap_id_data : submap_data_) {
+    //查询是否为冻结轨迹
     const bool frozen =
         frozen_trajectories.count(submap_id_data.id.trajectory_id) != 0;
+    // 临时submap变量插入id和全局位置
     C_submaps.Insert(submap_id_data.id,
                      FromPose(submap_id_data.data.global_pose));
+    // 优化器中插入需要优化的数据
     problem.AddParameterBlock(C_submaps.at(submap_id_data.id).data(), 3);
+    // 第一帧submap和冻结的则设为常量
     if (first_submap || frozen) {
       first_submap = false;
       // Fix the pose of the first submap or all submaps of a frozen
@@ -275,9 +288,12 @@ void OptimizationProblem2D::Solve(
       problem.SetParameterBlockConstant(C_submaps.at(submap_id_data.id).data());
     }
   }
+  // 遍历每个节点
   for (const auto& node_id_data : node_data_) {
+    // 查看轨迹是否需要冻结
     const bool frozen =
         frozen_trajectories.count(node_id_data.id.trajectory_id) != 0;
+    // 优化器中插入需要优化的数据
     C_nodes.Insert(node_id_data.id, FromPose(node_id_data.data.global_pose_2d));
     problem.AddParameterBlock(C_nodes.at(node_id_data.id).data(), 3);
     if (frozen) {
@@ -285,10 +301,12 @@ void OptimizationProblem2D::Solve(
     }
   }
   // Add cost functions for intra- and inter-submap constraints.
+  // 增加约束，即submap与node之间的相对位置，采用自动求导
   for (const Constraint& constraint : constraints) {
     problem.AddResidualBlock(
         CreateAutoDiffSpaCostFunction(constraint.pose),
         // Loop closure constraints should have a loss function.
+        // 若不是插入本submap的约束（即为闭环的约束），需要添加一个损失函数
         constraint.tag == Constraint::INTER_SUBMAP
             ? new ceres::HuberLoss(options_.huber_scale())
             : nullptr,
@@ -301,14 +319,18 @@ void OptimizationProblem2D::Solve(
   // Add penalties for violating odometry or changes between consecutive nodes
   // if odometry is not available.
   for (auto node_it = node_data_.begin(); node_it != node_data_.end();) {
+    // 获取每个节点的trajectory——id
     const int trajectory_id = node_it->id.trajectory_id;
+    // 获取这trajectoryid的最后一个node
     const auto trajectory_end = node_data_.EndOfTrajectory(trajectory_id);
+    //如果本轨迹是锁定的，则无需处理跳过
     if (frozen_trajectories.count(trajectory_id) != 0) {
       node_it = trajectory_end;
       continue;
     }
 
     auto prev_node_it = node_it;
+    //遍历给trajectoryid里所有的nodeid
     for (++node_it; node_it != trajectory_end; ++node_it) {
       const NodeId first_node_id = prev_node_it->id;
       const NodeSpec2D& first_node_data = prev_node_it->data;
@@ -316,14 +338,17 @@ void OptimizationProblem2D::Solve(
       const NodeId second_node_id = node_it->id;
       const NodeSpec2D& second_node_data = node_it->data;
 
+      //仅处理相邻的两个node
       if (second_node_id.node_index != first_node_id.node_index + 1) {
         continue;
       }
 
       // Add a relative pose constraint based on the odometry (if available).
+      // 获取相邻两个node的 相对里程计位置差
       std::unique_ptr<transform::Rigid3d> relative_odometry =
           CalculateOdometryBetweenNodes(trajectory_id, first_node_data,
                                         second_node_data);
+      //如果存在里程计则可增加一个里程计约束
       if (relative_odometry != nullptr) {
         problem.AddResidualBlock(
             CreateAutoDiffSpaCostFunction(Constraint::Pose{
@@ -334,9 +359,11 @@ void OptimizationProblem2D::Solve(
       }
 
       // Add a relative pose constraint based on consecutive local SLAM poses.
+      // 增加采用local slam的相对位置
       const transform::Rigid3d relative_local_slam_pose =
           transform::Embed3D(first_node_data.local_pose_2d.inverse() *
                              second_node_data.local_pose_2d);
+      // 插入优化器，采用自动求导
       problem.AddResidualBlock(
           CreateAutoDiffSpaCostFunction(
               Constraint::Pose{relative_local_slam_pose,
@@ -347,6 +374,7 @@ void OptimizationProblem2D::Solve(
     }
   }
 
+  // 里面是固定的位置node， 估计是类似与gps的全局点
   std::map<int, std::array<double, 3>> C_fixed_frames;
   for (auto node_it = node_data_.begin(); node_it != node_data_.end();) {
     const int trajectory_id = node_it->id.trajectory_id;
@@ -399,8 +427,9 @@ void OptimizationProblem2D::Solve(
     }
   }
 
-  // Solve.
+  // Solve. 求解器
   ceres::Solver::Summary summary;
+  // 创建求解器并求解
   ceres::Solve(
       common::CreateCeresSolverOptions(options_.ceres_solver_options()),
       &problem, &summary);
@@ -409,6 +438,7 @@ void OptimizationProblem2D::Solve(
   }
 
   // Store the result.
+  // 获得优化值，更新优化后的值
   for (const auto& C_submap_id_data : C_submaps) {
     submap_data_.at(C_submap_id_data.id).global_pose =
         ToPose(C_submap_id_data.data);
@@ -445,10 +475,12 @@ std::unique_ptr<transform::Rigid3d> OptimizationProblem2D::InterpolateOdometry(
           .transform);
 }
 
+// 计算两个节点之间的里程计位置差
 std::unique_ptr<transform::Rigid3d>
 OptimizationProblem2D::CalculateOdometryBetweenNodes(
     const int trajectory_id, const NodeSpec2D& first_node_data,
     const NodeSpec2D& second_node_data) const {
+  //如果存在里程计数据，则获取两次的里程计相对偏移，否则返回null
   if (odometry_data_.HasTrajectory(trajectory_id)) {
     const std::unique_ptr<transform::Rigid3d> first_node_odometry =
         InterpolateOdometry(trajectory_id, first_node_data.time);

@@ -124,14 +124,14 @@ class OptimizationProblem2D
       int trajectory_id, const NodeSpec2D& first_node_data,
       const NodeSpec2D& second_node_data) const;
 
-  optimization::proto::OptimizationProblemOptions options_;
-  MapById<NodeId, NodeSpec2D> node_data_;
-  MapById<SubmapId, SubmapSpec2D> submap_data_;
+  optimization::proto::OptimizationProblemOptions options_;         // 优化器的配置信息
+  MapById<NodeId, NodeSpec2D> node_data_;                           // 节点信息列表
+  MapById<SubmapId, SubmapSpec2D> submap_data_;                     // submap列表信息
   std::map<std::string, transform::Rigid3d> landmark_data_;
-  sensor::MapByTime<sensor::ImuData> imu_data_;
+  sensor::MapByTime<sensor::ImuData> imu_data_;                     // 传感器信息
   sensor::MapByTime<sensor::OdometryData> odometry_data_;
   sensor::MapByTime<sensor::FixedFramePoseData> fixed_frame_pose_data_;
-  std::map<int, PoseGraphInterface::TrajectoryData> trajectory_data_;
+  std::map<int, PoseGraphInterface::TrajectoryData> trajectory_data_; // 轨迹信息
 };
 
 }  // namespace optimization

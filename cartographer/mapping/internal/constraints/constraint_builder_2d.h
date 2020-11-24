@@ -61,10 +61,12 @@ class ConstraintBuilder2D {
   using Constraint = PoseGraphInterface::Constraint;
   using Result = std::vector<Constraint>;
 
+  //构造函数
   ConstraintBuilder2D(const proto::ConstraintBuilderOptions& options,
                       common::ThreadPoolInterface* thread_pool);
   ~ConstraintBuilder2D();
 
+  //屏蔽了拷贝构造函数和拷贝赋值操作符。
   ConstraintBuilder2D(const ConstraintBuilder2D&) = delete;
   ConstraintBuilder2D& operator=(const ConstraintBuilder2D&) = delete;
 
@@ -74,6 +76,7 @@ class ConstraintBuilder2D {
   //
   // The pointees of 'submap' and 'compressed_point_cloud' must stay valid until
   // all computations are finished.
+  // 添加约束，即nodeid相对于submap的位置
   void MaybeAddConstraint(const SubmapId& submap_id, const Submap2D* submap,
                           const NodeId& node_id,
                           const TrajectoryNode::Data* const constant_data,
@@ -85,16 +88,19 @@ class ConstraintBuilder2D {
   //
   // The pointees of 'submap' and 'compressed_point_cloud' must stay valid until
   // all computations are finished.
+  // 添加全局约束，
   void MaybeAddGlobalConstraint(
       const SubmapId& submap_id, const Submap2D* submap, const NodeId& node_id,
       const TrajectoryNode::Data* const constant_data);
 
   // Must be called after all computations related to one node have been added.
+  // 结束
   void NotifyEndOfNode();
 
   // Registers the 'callback' to be called with the results, after all
   // computations triggered by 'MaybeAdd*Constraint' have finished.
   // 'callback' is executed in the 'ThreadPool'.
+  // 回调，计算完成时，可将结果回传
   void WhenDone(const std::function<void(const Result&)>& callback);
 
   // Returns the number of consecutive finished nodes.
@@ -106,6 +112,7 @@ class ConstraintBuilder2D {
   static void RegisterMetrics(metrics::FamilyFactory* family_factory);
 
  private:
+  //闭环中匹配算法结构体 
   struct SubmapScanMatcher {
     const Grid2D* grid = nullptr;
     std::unique_ptr<scan_matching::FastCorrelativeScanMatcher2D>
@@ -115,6 +122,7 @@ class ConstraintBuilder2D {
 
   // The returned 'grid' and 'fast_correlative_scan_matcher' must only be
   // accessed after 'creation_task_handle' has completed.
+  // 
   const SubmapScanMatcher* DispatchScanMatcherConstruction(
       const SubmapId& submap_id, const Grid2D* grid)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -122,6 +130,7 @@ class ConstraintBuilder2D {
   // Runs in a background thread and does computations for an additional
   // constraint, assuming 'submap' and 'compressed_point_cloud' do not change
   // anymore. As output, it may create a new Constraint in 'constraint'.
+  // 根据nodeid和submap计算出一个新的约束
   void ComputeConstraint(const SubmapId& submap_id, const Submap2D* submap,
                          const NodeId& node_id, bool match_full_submap,
                          const TrajectoryNode::Data* const constant_data,
@@ -132,8 +141,11 @@ class ConstraintBuilder2D {
 
   void RunWhenDoneCallback() LOCKS_EXCLUDED(mutex_);
 
-  const constraints::proto::ConstraintBuilderOptions options_;
+    // 约束器配置内容
+  const constraints::proto::ConstraintBuilderOptions options_;   
+  // 资源池
   common::ThreadPoolInterface* thread_pool_;
+  // 线程锁
   absl::Mutex mutex_;
 
   // 'callback' set by WhenDone().
@@ -144,8 +156,10 @@ class ConstraintBuilder2D {
   // Number of the node in reaction to which computations are currently
   // added. This is always the number of nodes seen so far, even when older
   // nodes are matched against a new submap.
+  // 目前添加的节点个数
   int num_started_nodes_ GUARDED_BY(mutex_) = 0;
 
+    // 目前完成约束的节点个数
   int num_finished_nodes_ GUARDED_BY(mutex_) = 0;
 
   std::unique_ptr<common::Task> finish_node_task_ GUARDED_BY(mutex_);
@@ -155,16 +169,21 @@ class ConstraintBuilder2D {
   // Constraints currently being computed in the background. A deque is used to
   // keep pointers valid when adding more entries. Constraint search results
   // with below-threshold scores are also 'nullptr'.
+  // 约束的双端队列
   std::deque<std::unique_ptr<Constraint>> constraints_ GUARDED_BY(mutex_);
 
   // Map of dispatched or constructed scan matchers by 'submap_id'.
+  // 每个submap对应的匹配器
   std::map<SubmapId, SubmapScanMatcher> submap_scan_matchers_
       GUARDED_BY(mutex_);
 
+    // 采样器
   common::FixedRatioSampler sampler_;
+  // cere优化匹配器
   scan_matching::CeresScanMatcher2D ceres_scan_matcher_;
 
   // Histogram of scan matcher scores.
+  // 匹配评分统计
   common::Histogram score_histogram_ GUARDED_BY(mutex_);
 };
 

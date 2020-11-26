@@ -87,6 +87,7 @@ inline std::ostream& operator<<(std::ostream& os, const NodeId& v) {
 
 // Uniquely identifies a submap using a combination of a unique trajectory ID
 // and a zero-based index of the submap inside that trajectory.
+// 与轨迹NodeId一致， 猜测 表明trajectory为一submap， submap中包含许多laser scan  
 struct SubmapId {
   SubmapId(int trajectory_id, int submap_index)
       : trajectory_id(trajectory_id), submap_index(submap_index) {}

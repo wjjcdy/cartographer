@@ -35,23 +35,24 @@ class PoseGraphInterface {
   // 2010 IEEE/RSJ International Conference on (pp. 22--29). IEEE, 2010.
   struct Constraint {
     struct Pose {
-      transform::Rigid3d zbar_ij;
-      double translation_weight;
-      double rotation_weight;
+      transform::Rigid3d zbar_ij;    // 两个graph node的相对位姿
+      double translation_weight;     // 平移权重
+      double rotation_weight;        // 旋转权重
     };
 
-    SubmapId submap_id;  // 'i' in the paper.
-    NodeId node_id;      // 'j' in the paper.
+    SubmapId submap_id;  // 'i' in the paper. submap对应index的信息，同时指示trajectory id
+    NodeId node_id;      // 'j' in the paper. scan对应index的信息，同时指示trajectory id
 
     // Pose of the node 'j' relative to submap 'i'.
-    Pose pose;
+    Pose pose;           // scan节点对应在submap中的位置 
 
     // Differentiates between intra-submap (where node 'j' was inserted into
     // submap 'i') and inter-submap constraints (where node 'j' was not inserted
     // into submap 'i').
-    enum Tag { INTRA_SUBMAP, INTER_SUBMAP } tag;
+    enum Tag { INTRA_SUBMAP, INTER_SUBMAP } tag;  // 表示当前节点scan对应的submap是否为插入的
   };
 
+  // 暂时不知道landmark如何获取
   struct LandmarkNode {
     struct LandmarkObservation {
       int trajectory_id;
@@ -65,11 +66,13 @@ class PoseGraphInterface {
     bool frozen = false;
   };
 
+  // 
   struct SubmapPose {
     int version;
-    transform::Rigid3d pose;
+    transform::Rigid3d pose;  // 绝对位置
   };
 
+  // submap的数据
   struct SubmapData {
     std::shared_ptr<const Submap> submap;
     transform::Rigid3d pose;
@@ -83,6 +86,7 @@ class PoseGraphInterface {
 
   enum class TrajectoryState { ACTIVE, FINISHED, FROZEN, DELETED };
 
+  // 全局回调函数，同一轨迹id对应submapid， 对应位置图ID
   using GlobalSlamOptimizationCallback =
       std::function<void(const std::map<int /* trajectory_id */, SubmapId>&,
                          const std::map<int /* trajectory_id */, NodeId>&)>;
@@ -94,9 +98,11 @@ class PoseGraphInterface {
   PoseGraphInterface& operator=(const PoseGraphInterface&) = delete;
 
   // Waits for all computations to finish and computes optimized poses.
+  // 约束条件等全部完成时，执行一次最后的优化
   virtual void RunFinalOptimization() = 0;
 
   // Returns data for all submaps.
+  // 返回所有submap对应的内部栅格地图
   virtual MapById<SubmapId, SubmapData> GetAllSubmapData() const = 0;
 
   // Returns the global poses for all submaps.
@@ -105,13 +111,16 @@ class PoseGraphInterface {
   // Returns the transform converting data in the local map frame (i.e. the
   // continuous, non-loop-closed frame) into the global map frame (i.e. the
   // discontinuous, loop-closed frame).
+  // 获取在localmap中的位置到全局位置的转换矩阵
   virtual transform::Rigid3d GetLocalToGlobalTransform(
       int trajectory_id) const = 0;
 
   // Returns the current optimized trajectories.
+  // 返回当前轨迹上所有优化过的scan节点
   virtual MapById<NodeId, TrajectoryNode> GetTrajectoryNodes() const = 0;
 
   // Returns the current optimized trajectory poses.
+  // 返回当前轨迹上所有优化过的scan节点pose
   virtual MapById<NodeId, TrajectoryNodePose> GetTrajectoryNodePoses()
       const = 0;
 

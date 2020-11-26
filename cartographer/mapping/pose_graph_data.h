@@ -35,6 +35,7 @@ namespace mapping {
 // transitions to 'kFinished', all nodes are tried to match
 // against this submap. Likewise, all new nodes are matched against submaps in
 // that state.
+// submap 当前在后台的状态，如果状态为kFinshed，即此submap完成不再更新, 则需要所有节点都与这个submap进行匹配
 enum class SubmapState { kNoConstraintSearch, kFinished };
 
 struct InternalTrajectoryState {
@@ -49,6 +50,7 @@ struct InternalTrajectoryState {
   DeletionState deletion_state = DeletionState::NORMAL;
 };
 
+// graph 中存储的submap格式
 struct InternalSubmapData {
   std::shared_ptr<const Submap> submap;
   SubmapState state = SubmapState::kNoConstraintSearch;
@@ -56,34 +58,35 @@ struct InternalSubmapData {
   // IDs of the nodes that were inserted into this map together with
   // constraints for them. They are not to be matched again when this submap
   // becomes 'kFinished'.
+  // 插入该地图的scan ID集合，在此submap称为kFinished时无需进行match
   std::set<NodeId> node_ids;
 };
 
 struct PoseGraphData {
   // Submaps get assigned an ID and state as soon as they are seen, even
   // before they take part in the background computations.
-  MapById<SubmapId, InternalSubmapData> submap_data;
+  MapById<SubmapId, InternalSubmapData> submap_data;                             // submap 对应的submapID集合
 
   // Global submap poses currently used for displaying data.
-  MapById<SubmapId, optimization::SubmapSpec2D> global_submap_poses_2d;
+  MapById<SubmapId, optimization::SubmapSpec2D> global_submap_poses_2d;          // submap的全局位置
   MapById<SubmapId, optimization::SubmapSpec3D> global_submap_poses_3d;
 
   // Data that are currently being shown.
-  MapById<NodeId, TrajectoryNode> trajectory_nodes;
+  MapById<NodeId, TrajectoryNode> trajectory_nodes;                              // scanID 与trajectory对应集合
 
   // Global landmark poses with all observations.
   std::map<std::string /* landmark ID */, PoseGraphInterface::LandmarkNode>
       landmark_nodes;
 
   // How our various trajectories are related.
-  TrajectoryConnectivityState trajectory_connectivity_state;
+  TrajectoryConnectivityState trajectory_connectivity_state;                    // 轨迹之间的状态
   int num_trajectory_nodes = 0;
-  std::map<int, InternalTrajectoryState> trajectories_state;
+  std::map<int, InternalTrajectoryState> trajectories_state;                    // 轨迹状态集合
 
   // Set of all initial trajectory poses.
-  std::map<int, PoseGraph::InitialTrajectoryPose> initial_trajectory_poses;
+  std::map<int, PoseGraph::InitialTrajectoryPose> initial_trajectory_poses;     // 每个trajectory的初始位置
 
-  std::vector<PoseGraphInterface::Constraint> constraints;
+  std::vector<PoseGraphInterface::Constraint> constraints;                      // 约束队列
 };
 
 }  // namespace mapping

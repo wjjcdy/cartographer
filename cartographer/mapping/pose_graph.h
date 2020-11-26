@@ -46,9 +46,11 @@ proto::PoseGraphOptions CreatePoseGraphOptions(
 
 class PoseGraph : public PoseGraphInterface {
  public:
+ // trajectory id轨迹初始位置表示形式，
+ // 是有其他id 相对位置转换关系
   struct InitialTrajectoryPose {
     int to_trajectory_id;
-    transform::Rigid3d relative_pose;
+    transform::Rigid3d relative_pose;    // 与to_trajectory_id的初始 pose相对位置
     common::Time time;
   };
 

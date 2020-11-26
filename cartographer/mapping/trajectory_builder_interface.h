@@ -50,22 +50,27 @@ class TrajectoryBuilderInterface {
   //保存插入Local Slam的一个节点的数据结构
   struct InsertionResult {
     //包含两个部分：一个int型的trajectory_id和一个int型的node_index. 
+    //即属于哪一个trajectory的ID和此trajectory的index
     NodeId node_id;
     // 处理后的传感器数据，包括此帧位置和对应的点云，均在local slam中
+    // 应该是此帧scan的点云相关信息
     std::shared_ptr<const TrajectoryNode::Data> constant_data;
-    // submap列表
+    // submap列表 ???某一帧数据为什么还会维护一个submap
+    // 根据2d 地图更新过程可知，submap一直为两份，即vector其实最多为两个， front用于匹配的，back用于插入的
     std::vector<std::shared_ptr<const Submap>> insertion_submaps;
   };
 
   // A callback which is called after local SLAM processes an accumulated
   // 'sensor::RangeData'. If the data was inserted into a submap, reports the
   // assigned 'NodeId', otherwise 'nullptr' if the data was filtered out.
+  // 定义一个回调函数，可以让前端的结果传出
   using LocalSlamResultCallback =
       std::function<void(int /* trajectory ID */, common::Time,
                          transform::Rigid3d /* local pose estimate */,
                          sensor::RangeData /* in local frame */,
                          std::unique_ptr<const InsertionResult>)>;
 
+  // sensor Id,即每种传感器类型定义
   struct SensorId {
     enum class SensorType {
       RANGE = 0,
@@ -97,6 +102,7 @@ class TrajectoryBuilderInterface {
   TrajectoryBuilderInterface& operator=(const TrajectoryBuilderInterface&) =
       delete;
 
+  //加入点云传感器数据
   virtual void AddSensorData(
       const std::string& sensor_id,
       const sensor::TimedPointCloudData& timed_point_cloud_data) = 0;
@@ -112,6 +118,7 @@ class TrajectoryBuilderInterface {
   // Allows to directly add local SLAM results to the 'PoseGraph'. Note that it
   // is invalid to add local SLAM results for a trajectory that has a
   // 'LocalTrajectoryBuilder2D/3D'.
+  // 可以将local slam的结果直接插入到后端优化中，但是暂时不能用
   virtual void AddLocalSlamResultData(
       std::unique_ptr<mapping::LocalSlamResultData> local_slam_result_data) = 0;
 };

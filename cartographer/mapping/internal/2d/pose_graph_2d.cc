@@ -239,14 +239,14 @@ NodeId PoseGraph2D::AddNode(
 void PoseGraph2D::AddWorkItem(
     const std::function<WorkItem::Result()>& work_item) {
   absl::MutexLock locker(&work_queue_mutex_);
-  // 如果工作队列是空的，则可直接运行
+  // 如果工作队列未被初始化，则先初始化并启动线程执行任务队列
   if (work_queue_ == nullptr) {
     work_queue_ = absl::make_unique<WorkQueue>();
     auto task = absl::make_unique<common::Task>();
     task->SetWorkItem([this]() { DrainWorkQueue(); });
     thread_pool_->Schedule(std::move(task));
   }
-  // 否则插入到工作队列中，等待执行
+  // 将当前任务插入到工作队列中，等待执行
   const auto now = std::chrono::steady_clock::now();
   work_queue_->push_back({now, work_item});
   kWorkQueueSizeMetric->Set(work_queue_->size());
@@ -651,11 +651,11 @@ void PoseGraph2D::HandleWorkQueue(
     kConstraintsDifferentTrajectoryMetric->Set(
         inter_constraints_different_trajectory);
   }
-  // 清空整个工作队列，即等待工作队列完成
+  // 开启任务队列缓存循环执行功能
   DrainWorkQueue();
 }
 
-// 等待任务队列中所有任务完成
+// 开启任务队列缓存循环执行功能
 void PoseGraph2D::DrainWorkQueue() {
   bool process_work_queue = true;
   size_t work_queue_size;
